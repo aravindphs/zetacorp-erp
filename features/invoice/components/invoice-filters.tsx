@@ -11,11 +11,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { PRODUCT_STATUS_LABELS } from '@/constants/inventory';
+import { INVOICE_STATUS_LABELS, PAYMENT_STATUS_LABELS } from '@/features/invoice/invoice.types';
 
 const ALL = 'all';
 
-export function ProductFilters({ categories }: { categories: { id: string; name: string }[] }) {
+export function InvoiceFilters() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -31,59 +31,39 @@ export function ProductFilters({ categories }: { categories: { id: string; name:
     [router, pathname, searchParams],
   );
 
-  const lowStock = searchParams.get('lowStock') === 'yes';
-  const hasFilters =
-    searchParams.get('categoryId') || searchParams.get('status') || lowStock;
+  const hasFilters = searchParams.get('status') || searchParams.get('paymentStatus');
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select
-        items={{ [ALL]: 'All categories', ...Object.fromEntries(categories.map((c) => [c.id, c.name])) }}
-        value={searchParams.get('categoryId') ?? ALL}
-        onValueChange={(v) => setParam('categoryId', v)}
-      >
-        <SelectTrigger className="h-9 w-[170px]">
-          <SelectValue placeholder="Category" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>All categories</SelectItem>
-          {categories.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
       <Select value={searchParams.get('status') ?? ALL} onValueChange={(v) => setParam('status', v)}>
-        <SelectTrigger className="h-9 w-[160px]">
+        <SelectTrigger className="h-9 w-[150px]">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All statuses</SelectItem>
-          {Object.entries(PRODUCT_STATUS_LABELS).map(([value, label]) => (
-            <SelectItem key={value} value={value}>
-              {label}
-            </SelectItem>
+          {Object.entries(INVOICE_STATUS_LABELS).map(([v, l]) => (
+            <SelectItem key={v} value={v}>{l}</SelectItem>
           ))}
         </SelectContent>
       </Select>
-
-      <Button
-        variant={lowStock ? 'secondary' : 'outline'}
-        size="sm"
-        onClick={() => setParam('lowStock', lowStock ? null : 'yes')}
-      >
-        Low stock only
-      </Button>
-
+      <Select value={searchParams.get('paymentStatus') ?? ALL} onValueChange={(v) => setParam('paymentStatus', v)}>
+        <SelectTrigger className="h-9 w-[160px]">
+          <SelectValue placeholder="Payment" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Any payment</SelectItem>
+          {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => (
+            <SelectItem key={v} value={v}>{l}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {hasFilters && (
         <Button
           variant="ghost"
           size="sm"
           onClick={() => {
             const next = new URLSearchParams(searchParams.toString());
-            ['categoryId', 'status', 'lowStock'].forEach((k) => next.delete(k));
+            ['status', 'paymentStatus'].forEach((k) => next.delete(k));
             next.set('page', '1');
             router.push(`${pathname}?${next.toString()}`, { scroll: false });
           }}

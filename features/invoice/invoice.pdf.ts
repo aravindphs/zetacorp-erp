@@ -54,8 +54,10 @@ export interface InvoicePdfData {
 
 const A4 = { w: 595.28, h: 841.89 };
 const M = 40;
+// StandardFonts (Helvetica) can only encode WinAnsi; the ₹ glyph is not in it,
+// so we use "Rs." in the PDF to avoid embedding a custom font.
 const INR = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -72,7 +74,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Arr
     yy: number,
     opts: { size?: number; font?: PDFFont; color?: [number, number, number] } = {},
   ) => {
-    p.drawText(s ?? '', {
+    // WinAnsi (StandardFonts) can't encode chars outside Latin-1 — replace them
+    // so unexpected unicode in dynamic data never crashes PDF generation.
+    const safe = (s ?? '').replace(/[^\x00-\xFF]/g, '?');
+    p.drawText(safe, {
       x,
       y: yy,
       size: opts.size ?? 9,

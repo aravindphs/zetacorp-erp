@@ -126,7 +126,11 @@ export function ProductForm({
               control={control}
               name="categoryId"
               render={({ field }) => (
-                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                <Select
+                  items={Object.fromEntries(categories.map((c) => [c.id, c.name]))}
+                  value={field.value ?? ''}
+                  onValueChange={field.onChange}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
