@@ -123,6 +123,8 @@ export const PERMISSION_DEFINITIONS = [
     action: 'convert',
     description: 'Convert quotation to invoice',
   },
+  { key: 'quotation.cancel', module: 'quotation', action: 'cancel', description: 'Cancel quotations' },
+  { key: 'quotation.duplicate', module: 'quotation', action: 'duplicate', description: 'Duplicate quotations' },
 
   // Invoices
   { key: 'invoice.view', module: 'invoice', action: 'view', description: 'View invoices' },
@@ -143,6 +145,8 @@ export const PERMISSION_DEFINITIONS = [
   { key: 'payment.create', module: 'payment', action: 'create', description: 'Record payments' },
   { key: 'payment.update', module: 'payment', action: 'update', description: 'Edit payments' },
   { key: 'payment.delete', module: 'payment', action: 'delete', description: 'Delete payments' },
+  { key: 'payment.print', module: 'payment', action: 'print', description: 'Print/download payment receipt' },
+  { key: 'payment.export', module: 'payment', action: 'export', description: 'Export payments' },
 
   // Expenses
   { key: 'expense.view', module: 'expense', action: 'view', description: 'View expenses' },

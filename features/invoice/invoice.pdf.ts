@@ -59,7 +59,10 @@ const M = 40;
 const INR = (n: number) =>
   `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Array> {
+export async function generateInvoicePdf(
+  data: InvoicePdfData,
+  title = 'TAX INVOICE',
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -90,7 +93,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Arr
 
   // Header
   text(page, data.company.name, M, y, { size: 16, font: bold });
-  text(page, 'TAX INVOICE', A4.w - M - 90, y, { size: 14, font: bold });
+  text(page, title, A4.w - M - 110, y, { size: 14, font: bold });
   y -= 16;
   text(page, data.company.address, M, y, { size: 8 });
   y -= 11;

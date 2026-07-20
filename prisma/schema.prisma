@@ -476,18 +476,29 @@ model InventoryTransaction {
 // ---------------------------------------------------------------------------
 
 model Quotation {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  quotationNumber String          @unique @map("quotation_number")
-  customerId      String          @map("customer_id") @db.Uuid
-  quotationDate   DateTime        @map("quotation_date") @db.Date
-  validUntil      DateTime?       @map("valid_until") @db.Date
-  status          QuotationStatus @default(DRAFT)
-  subtotal        Decimal         @default(0) @db.Decimal(14, 2)
-  discount        Decimal         @default(0) @db.Decimal(14, 2)
-  gstAmount       Decimal         @default(0) @map("gst_amount") @db.Decimal(14, 2)
-  grandTotal      Decimal         @default(0) @map("grand_total") @db.Decimal(14, 2)
-  termsConditions String?         @map("terms_conditions")
-  remarks         String?
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quotationNumber  String          @unique @map("quotation_number")
+  customerId       String          @map("customer_id") @db.Uuid
+  quotationDate    DateTime        @map("quotation_date") @db.Date
+  validUntil       DateTime?       @map("valid_until") @db.Date
+  status           QuotationStatus @default(DRAFT)
+  subtotal         Decimal         @default(0) @db.Decimal(14, 2)
+  discount         Decimal         @default(0) @db.Decimal(14, 2)
+  taxableAmount    Decimal         @default(0) @map("taxable_amount") @db.Decimal(14, 2)
+  cgstAmount       Decimal         @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount       Decimal         @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount       Decimal         @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  gstAmount        Decimal         @default(0) @map("gst_amount") @db.Decimal(14, 2)
+  roundOff         Decimal         @default(0) @map("round_off") @db.Decimal(14, 2)
+  grandTotal       Decimal         @default(0) @map("grand_total") @db.Decimal(14, 2)
+  placeOfSupply    String?         @map("place_of_supply")
+  referenceNumber  String?         @map("reference_number")
+  termsConditions  String?         @map("terms_conditions")
+  remarks          String?
+  sentAt           DateTime?       @map("sent_at") @db.Timestamptz(6)
+  cancelledAt      DateTime?       @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason     String?         @map("cancel_reason")
+  duplicatedFromId String?         @map("duplicated_from_id") @db.Uuid
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -513,11 +524,16 @@ model QuotationItem {
   id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   quotationId   String  @map("quotation_id") @db.Uuid
   productId     String? @map("product_id") @db.Uuid
-  description   String
+  productName   String  @map("product_name")
+  description   String?
+  hsnCode       String? @map("hsn_code")
+  unit          String  @default("Nos")
   quantity      Decimal @db.Decimal(14, 3)
   unitPrice     Decimal @map("unit_price") @db.Decimal(14, 2)
   discount      Decimal @default(0) @db.Decimal(14, 2)
   gstPercentage Decimal @default(0) @map("gst_percentage") @db.Decimal(5, 2)
+  taxableValue  Decimal @default(0) @map("taxable_value") @db.Decimal(14, 2)
+  gstAmount     Decimal @default(0) @map("gst_amount") @db.Decimal(14, 2)
   lineTotal     Decimal @map("line_total") @db.Decimal(14, 2)
   sortOrder     Int     @default(0) @map("sort_order")
 

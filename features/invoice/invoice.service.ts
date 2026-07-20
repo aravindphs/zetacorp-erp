@@ -238,7 +238,11 @@ export async function recordPayment(user: AuthUser, invoiceId: string, input: Re
   }
 
   const payment = await prisma.$transaction(async (tx) => {
-    const number = await generateCode(tx, { key: 'payment', prefix: CODE_PREFIX.PAYMENT });
+    const payYear = new Date(input.paymentDate).getFullYear();
+    const number = await generateCode(tx, {
+      key: `payment:${payYear}`,
+      prefix: `${CODE_PREFIX.PAYMENT}-${payYear}`,
+    });
     const created = await tx.payment.create({
       data: {
         paymentNumber: number,
