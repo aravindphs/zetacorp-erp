@@ -52,11 +52,20 @@ export function invalidateApprovalWorkflow(module?: string): void {
   else workflowCache.clear();
 }
 
-async function getWorkflow(module: string): Promise<CachedWorkflow> {
+/**
+ * `db` must be the caller's transaction client when this runs inside a
+ * transaction. Using the global client there would check out a second
+ * connection while the first is held — a deadlock wherever the pool is small
+ * (Vercel runs `connection_limit=1`).
+ */
+async function getWorkflow(
+  module: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<CachedWorkflow> {
   const cached = workflowCache.get(module);
   if (cached && cached.expiresAt > Date.now()) return cached.workflow;
 
-  const record = await prisma.approvalWorkflow.findFirst({
+  const record = await db.approvalWorkflow.findFirst({
     where: { module, isActive: true, isDeleted: false },
     orderBy: { createdAt: 'asc' },
     select: {
@@ -92,7 +101,7 @@ export async function startApproval(
   tx: Prisma.TransactionClient,
   input: { module: string; referenceId: string; requesterId: string },
 ): Promise<ApprovalOutcome> {
-  const workflow = await getWorkflow(input.module);
+  const workflow = await getWorkflow(input.module, tx);
   const firstStep = workflow.steps[0]!;
 
   const request = await tx.approvalRequest.create({
@@ -115,13 +124,14 @@ async function actorSatisfiesStep(
   step: WorkflowStep,
   actor: AuthUser,
   requesterId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<boolean> {
   // Nobody approves their own request, whatever the rule says.
   if (actor.id === requesterId) return false;
 
   switch (step.approverRule) {
     case 'ANY_HIGHER_ROLE': {
-      const requester = await prisma.user.findFirst({
+      const requester = await db.user.findFirst({
         where: { id: requesterId },
         select: { role: { select: { level: true } } },
       });
@@ -133,7 +143,7 @@ async function actorSatisfiesStep(
     case 'SPECIFIC_USER':
       return Boolean(step.userId) && actor.id === step.userId;
     case 'REPORTING_MANAGER': {
-      const requester = await prisma.user.findFirst({
+      const requester = await db.user.findFirst({
         where: { id: requesterId },
         select: { reportingManagerId: true },
       });
@@ -185,11 +195,11 @@ export async function recordApprovalDecision(
     throw new BusinessRuleError('This request has already been decided.');
   }
 
-  const workflow = await getWorkflow(request.module);
+  const workflow = await getWorkflow(request.module, tx);
   const step = workflow.steps.find((s) => s.stepOrder === request.currentStep);
   if (!step) throw new BusinessRuleError('The configured approval step no longer exists.');
 
-  const allowed = await actorSatisfiesStep(step, actor, request.requesterId);
+  const allowed = await actorSatisfiesStep(step, actor, request.requesterId, tx);
   if (!allowed) {
     throw new ForbiddenError('You are not an approver for this request at its current step.');
   }
