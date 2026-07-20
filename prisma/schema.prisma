@@ -171,6 +171,34 @@ enum LeaveStatus {
   COMPLETED
 }
 
+// --- Approval Workflow Engine (§284, §307) --------------------------------
+// Approval logic is configuration, never hardcoded in a feature module.
+
+/** How a step resolves who is allowed to act on it. */
+enum ApprovalApproverRule {
+  /** Anyone whose role outranks the requester's role (Role.level). */
+  ANY_HIGHER_ROLE
+  /** Holders of one specific role. */
+  SPECIFIC_ROLE
+  /** The requester's reporting manager. */
+  REPORTING_MANAGER
+  /** One named user. */
+  SPECIFIC_USER
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalActionType {
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum AnnouncementPriority {
   LOW
   MEDIUM
@@ -259,6 +287,7 @@ model User {
   userRoles        UserRole[]
   expenses         Expense[]
   leaveRequests    LeaveRequest[]
+  delegatedLeaves  LeaveRequest[]     @relation("LeaveDelegate")
   notifications    Notification[]
 
   @@index([email])
@@ -352,6 +381,10 @@ model Role {
   name         String  @unique
   description  String?
   isSystemRole Boolean @default(false) @map("is_system_role")
+  // Authority rank used by the approval engine: an approver must outrank the
+  // requester (Admin 100 > Manager 50 > Staff 10). Keeping this as data rather
+  // than hardcoded role names is what lets approval rules stay configurable.
+  level        Int     @default(0)
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -871,6 +904,104 @@ model Expense {
   @@map("expenses")
 }
 
+// ---------------------------------------------------------------------------
+// Approval Workflow Engine (§284, §307)
+//
+// A workflow is a named, ordered list of steps bound to a module ("leave",
+// "expense"). Submitting a record opens an ApprovalRequest that walks those
+// steps; each decision is recorded as an immutable ApprovalAction. Feature
+// modules ask the engine who may act — they never encode approver rules.
+// ---------------------------------------------------------------------------
+
+model ApprovalWorkflow {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /** Owning module key, e.g. "leave" or "expense". */
+  module      String
+  name        String
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  steps    ApprovalWorkflowStep[]
+  requests ApprovalRequest[]
+
+  @@unique([module, name])
+  @@index([module, isActive])
+  @@map("approval_workflows")
+}
+
+model ApprovalWorkflowStep {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflowId   String               @map("workflow_id") @db.Uuid
+  stepOrder    Int                  @map("step_order")
+  name         String
+  approverRule ApprovalApproverRule @map("approver_rule")
+  /** Required when the rule is SPECIFIC_ROLE. */
+  roleId       String?              @map("role_id") @db.Uuid
+  /** Required when the rule is SPECIFIC_USER. */
+  userId       String?              @map("user_id") @db.Uuid
+  /** Skip this step when no approver can be resolved (e.g. no manager set). */
+  skipIfUnresolved Boolean          @default(false) @map("skip_if_unresolved")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workflow ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, stepOrder])
+  @@index([workflowId])
+  @@map("approval_workflow_steps")
+}
+
+model ApprovalRequest {
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflowId  String                @map("workflow_id") @db.Uuid
+  module      String
+  /** Primary key of the record under approval (leave request, expense…). */
+  referenceId String                @map("reference_id") @db.Uuid
+  requesterId String                @map("requester_id") @db.Uuid
+  /** Step currently awaiting a decision; null once finished. */
+  currentStep Int?                  @map("current_step")
+  status      ApprovalRequestStatus @default(PENDING)
+  completedAt DateTime?             @map("completed_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workflow ApprovalWorkflow @relation(fields: [workflowId], references: [id])
+  actions  ApprovalAction[]
+
+  @@index([module, referenceId])
+  @@index([requesterId])
+  @@index([status])
+  @@map("approval_requests")
+}
+
+model ApprovalAction {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  approvalRequestId String             @map("approval_request_id") @db.Uuid
+  stepOrder         Int                @map("step_order")
+  stepName          String             @map("step_name")
+  actorId           String             @map("actor_id") @db.Uuid
+  action            ApprovalActionType
+  remarks           String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  request ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  @@index([approvalRequestId])
+  @@index([actorId])
+  @@map("approval_actions")
+}
+
 model LeaveType {
   id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name             String  @unique
@@ -909,6 +1040,14 @@ model LeaveRequest {
   approvalDate DateTime?   @map("approval_date") @db.Timestamptz(6)
   remarks      String?
 
+  // Leave information (§278)
+  isHalfDay          Boolean @default(false) @map("is_half_day")
+  emergencyContact   String? @map("emergency_contact")
+  delegateEmployeeId String? @map("delegate_employee_id") @db.Uuid
+
+  /** Open workflow instance in the approval engine (§284). */
+  approvalRequestId String? @map("approval_request_id") @db.Uuid
+
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy String?   @map("created_by") @db.Uuid
@@ -919,12 +1058,14 @@ model LeaveRequest {
 
   employee  User      @relation(fields: [employeeId], references: [id])
   leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  delegate  User?     @relation("LeaveDelegate", fields: [delegateEmployeeId], references: [id])
 
   @@index([leaveNumber])
   @@index([employeeId])
   @@index([leaveTypeId])
   @@index([status])
   @@index([fromDate])
+  @@index([approvalRequestId])
   @@index([isDeleted])
   @@map("leave_requests")
 }

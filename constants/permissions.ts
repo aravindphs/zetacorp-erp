@@ -166,6 +166,16 @@ export const PERMISSION_DEFINITIONS = [
   { key: 'leave.update', module: 'leave', action: 'update', description: 'Edit leave requests' },
   { key: 'leave.delete', module: 'leave', action: 'delete', description: 'Delete leave requests' },
   { key: 'leave.approve', module: 'leave', action: 'approve', description: 'Approve/reject leave' },
+  { key: 'leave.reject', module: 'leave', action: 'reject', description: 'Reject leave requests' },
+  { key: 'leave.cancel', module: 'leave', action: 'cancel', description: 'Cancel leave requests' },
+  {
+    key: 'leave.calendar',
+    module: 'leave',
+    action: 'calendar',
+    description: 'View the leave calendar',
+  },
+  { key: 'leave.team', module: 'leave', action: 'team', description: 'View team leave' },
+  { key: 'leave.export', module: 'leave', action: 'export', description: 'Export leave requests' },
 
   // Employees / users
   { key: 'employee.view', module: 'employee', action: 'view', description: 'View employees' },

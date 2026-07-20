@@ -24,9 +24,18 @@ export interface RoleDefinition {
   name: RoleName;
   description: string;
   isSystemRole: true;
+  /**
+   * Authority rank consumed by the approval engine (spec §284): an approver
+   * must outrank the requester. Admin approves Manager leave; Manager and Admin
+   * both approve Staff leave. Expressed as data so approval rules stay
+   * configurable instead of hardcoding role names.
+   */
+  level: number;
   /** `'ALL'` grants every permission (Admin); otherwise an explicit list. */
   permissions: 'ALL' | readonly PermissionKey[];
 }
+
+export const ROLE_LEVELS = { ADMIN: 100, MANAGER: 50, STAFF: 10 } as const;
 
 const MANAGER_PERMISSIONS: readonly PermissionKey[] = [
   'dashboard.view',
@@ -71,7 +80,12 @@ const MANAGER_PERMISSIONS: readonly PermissionKey[] = [
   'expense.approve',
   'leave.view',
   'leave.create',
+  'leave.cancel',
   'leave.approve',
+  'leave.reject',
+  'leave.calendar',
+  'leave.team',
+  'leave.export',
   'employee.view',
   'announcement.view',
   'report.view',
@@ -107,6 +121,8 @@ const STAFF_PERMISSIONS: readonly PermissionKey[] = [
   'expense.create',
   'leave.view',
   'leave.create',
+  'leave.cancel',
+  'leave.calendar',
   'announcement.view',
 ];
 
@@ -115,18 +131,21 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: ROLE_NAMES.ADMIN,
     description: 'Full system access, configuration, and administration.',
     isSystemRole: true,
+    level: ROLE_LEVELS.ADMIN,
     permissions: 'ALL',
   },
   {
     name: ROLE_NAMES.MANAGER,
     description: 'Operational management with approval rights; no system configuration.',
     isSystemRole: true,
+    level: ROLE_LEVELS.MANAGER,
     permissions: MANAGER_PERMISSIONS,
   },
   {
     name: ROLE_NAMES.STAFF,
     description: 'Limited operational access to assigned work; own leave and expenses.',
     isSystemRole: true,
+    level: ROLE_LEVELS.STAFF,
     permissions: STAFF_PERMISSIONS,
   },
 ];

@@ -46,8 +46,17 @@ async function seedRoles(permissionIdByKey: Map<string, string>): Promise<Map<st
   for (const role of ROLE_DEFINITIONS) {
     const record = await prisma.role.upsert({
       where: { name: role.name },
-      update: { description: role.description, isSystemRole: role.isSystemRole },
-      create: { name: role.name, description: role.description, isSystemRole: role.isSystemRole },
+      update: {
+        description: role.description,
+        isSystemRole: role.isSystemRole,
+        level: role.level,
+      },
+      create: {
+        name: role.name,
+        description: role.description,
+        isSystemRole: role.isSystemRole,
+        level: role.level,
+      },
     });
     roleIdByName.set(role.name, record.id);
 
@@ -68,6 +77,42 @@ async function seedRoles(permissionIdByKey: Map<string, string>): Promise<Map<st
   }
 
   return roleIdByName;
+}
+
+/**
+ * Default approval workflows (§284, §307). One step whose approver is "anyone
+ * outranking the requester" — which yields exactly the intended behaviour:
+ * Manager and Admin can approve Staff leave, while a Manager's own leave can
+ * only be approved by an Admin. Steps are data, so this is reconfigurable
+ * without code changes.
+ */
+async function seedApprovalWorkflows(): Promise<void> {
+  const workflows = [
+    { module: 'leave', name: 'Default Leave Approval', description: 'Single approval by any higher-ranked role.' },
+    { module: 'expense', name: 'Default Expense Approval', description: 'Single approval by any higher-ranked role.' },
+  ];
+
+  for (const wf of workflows) {
+    const record = await prisma.approvalWorkflow.upsert({
+      where: { module_name: { module: wf.module, name: wf.name } },
+      update: { description: wf.description, isActive: true },
+      create: { module: wf.module, name: wf.name, description: wf.description, isActive: true },
+      select: { id: true },
+    });
+
+    await prisma.approvalWorkflowStep.upsert({
+      where: { workflowId_stepOrder: { workflowId: record.id, stepOrder: 1 } },
+      update: { name: 'Approval', approverRule: 'ANY_HIGHER_ROLE', skipIfUnresolved: false },
+      create: {
+        workflowId: record.id,
+        stepOrder: 1,
+        name: 'Approval',
+        approverRule: 'ANY_HIGHER_ROLE',
+        skipIfUnresolved: false,
+      },
+    });
+  }
+  log(`Approval workflows (${workflows.length})`);
 }
 
 async function seedLeaveTypes(): Promise<void> {
@@ -254,6 +299,7 @@ async function main(): Promise<void> {
   const roleIdByName = await seedRoles(permissionIdByKey);
   const departmentIdByName = await seedDepartments();
   const designationIdByName = await seedDesignations();
+  await seedApprovalWorkflows();
   await seedLeaveTypes();
   await seedExpenseCategories();
   await seedSystemSettings();

@@ -94,7 +94,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: BadgeCheck,
         permission: 'employee.view',
       },
-      { label: 'Leave', href: '/leave', icon: CalendarDays, permission: 'leave.view' },
+      { label: 'Leave', href: '/workforce/leave', icon: CalendarDays, permission: 'leave.view' },
       { label: 'Expenses', href: '/expenses', icon: Wallet, permission: 'expense.view' },
     ],
   },

@@ -12,6 +12,8 @@ export interface AuthUser {
   employeeCode: string;
   roleId: string;
   roleName: string;
+  /** Authority rank used by the approval engine (spec §284). */
+  roleLevel: number;
   status: UserStatus;
   profilePhoto: string | null;
   /** Flattened permission keys granted via the user's role. */

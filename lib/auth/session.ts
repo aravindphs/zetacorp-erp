@@ -93,7 +93,7 @@ async function loadUserProfile(userId: string): Promise<AuthUser | null> {
       roleId: true,
       status: true,
       profilePhoto: true,
-      role: { select: { name: true } },
+      role: { select: { name: true, level: true } },
     },
   });
 
@@ -111,6 +111,7 @@ async function loadUserProfile(userId: string): Promise<AuthUser | null> {
     employeeCode: dbUser.employeeCode,
     roleId: dbUser.roleId,
     roleName: dbUser.role.name,
+    roleLevel: dbUser.role.level,
     status: dbUser.status,
     profilePhoto: dbUser.profilePhoto,
     permissions: permissions as Set<PermissionKey>,
