@@ -12,8 +12,6 @@ export interface AuthUser {
   employeeCode: string;
   roleId: string;
   roleName: string;
-  department: string | null;
-  designation: string | null;
   status: UserStatus;
   profilePhoto: string | null;
   /** Flattened permission keys granted via the user's role. */
