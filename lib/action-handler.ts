@@ -6,7 +6,7 @@ import 'server-only';
  * action's error handling identical and never leaks internal errors (spec §65).
  */
 import { ZodError } from 'zod';
-import { isAppError } from '@/lib/errors';
+import { isAppError, normalizeDatabaseError } from '@/lib/errors';
 import { logger, serializeError } from '@/lib/logger';
 import { actionFail, type ActionResult } from '@/types/action';
 import type { ApiError } from '@/types/api';
@@ -16,7 +16,9 @@ export async function handleAction<T>(
 ): Promise<ActionResult<T>> {
   try {
     return await fn();
-  } catch (error) {
+  } catch (rawError) {
+    // Surface database constraint failures as actionable messages (§65).
+    const error = normalizeDatabaseError(rawError);
     if (error instanceof ZodError) {
       const errors: ApiError[] = error.issues.map((i) => ({
         field: i.path.join('.') || undefined,

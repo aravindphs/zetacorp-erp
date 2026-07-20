@@ -6,7 +6,9 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
+  BadgeCheck,
   BarChart3,
+  Building2,
   CalendarDays,
   CreditCard,
   DatabaseBackup,
@@ -63,13 +65,35 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'Inventory',
     items: [
       { label: 'Products', href: '/inventory', icon: Package, permission: 'inventory.view' },
-      { label: 'Categories', href: '/categories', icon: FolderTree, permission: 'category.view' },
+      {
+        label: 'Categories',
+        href: '/inventory/categories',
+        icon: FolderTree,
+        permission: 'category.view',
+      },
     ],
   },
   {
     label: 'Workforce',
     items: [
-      { label: 'Employees', href: '/employees', icon: UserCog, permission: 'employee.view' },
+      {
+        label: 'Employees',
+        href: '/workforce/employees',
+        icon: UserCog,
+        permission: 'employee.view',
+      },
+      {
+        label: 'Departments',
+        href: '/workforce/departments',
+        icon: Building2,
+        permission: 'employee.view',
+      },
+      {
+        label: 'Designations',
+        href: '/workforce/designations',
+        icon: BadgeCheck,
+        permission: 'employee.view',
+      },
       { label: 'Leave', href: '/leave', icon: CalendarDays, permission: 'leave.view' },
       { label: 'Expenses', href: '/expenses', icon: Wallet, permission: 'expense.view' },
     ],

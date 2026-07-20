@@ -10,20 +10,32 @@
  */
 import { z } from 'zod';
 
+/**
+ * `.env` files routinely keep empty placeholders (`JWT_SECRET=""`). An empty
+ * string is not `undefined`, so `.optional()` and `.default()` would not apply
+ * and validation would fail on a variable the app treats as unset. Normalising
+ * blank values to `undefined` first makes both behave as intended.
+ */
+const blankAsUnset = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => {
+    if (typeof value === 'string' && value.trim() === '') return undefined;
+    return value;
+  }, schema);
+
 const serverSchema = z.object({
-  APP_URL: z.string().url().default('http://localhost:3000'),
+  APP_URL: blankAsUnset(z.string().url().default('http://localhost:3000')),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  DIRECT_URL: z.string().min(1).optional(),
+  DIRECT_URL: blankAsUnset(z.string().min(1).optional()),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
-  SUPABASE_STORAGE_BUCKET: z.string().min(1).default('nsquare-erp'),
-  JWT_SECRET: z.string().min(1).optional(),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  SUPABASE_STORAGE_BUCKET: blankAsUnset(z.string().min(1).default('nsquare-erp')),
+  JWT_SECRET: blankAsUnset(z.string().min(1).optional()),
+  NODE_ENV: blankAsUnset(z.enum(['development', 'test', 'production']).default('development')),
 });
 
 const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url('NEXT_PUBLIC_SUPABASE_URL must be a valid URL'),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, 'NEXT_PUBLIC_SUPABASE_ANON_KEY is required'),
-  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  NEXT_PUBLIC_APP_URL: blankAsUnset(z.string().url().default('http://localhost:3000')),
 });
 
 type ServerEnv = z.infer<typeof serverSchema>;

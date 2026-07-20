@@ -156,7 +156,51 @@ async function ensureAuthUser(email: string, password: string, fullName: string)
   return data.user.id;
 }
 
-async function seedAdminUser(roleIdByName: Map<string, string>): Promise<void> {
+/** Default departments (§252). Admins can add unlimited more at runtime. */
+async function seedDepartments(): Promise<Map<string, string>> {
+  const names = ['Administration', 'Sales', 'Inventory', 'Accounts', 'Management'];
+  const idByName = new Map<string, string>();
+  for (const name of names) {
+    const row = await prisma.department.upsert({
+      where: { name },
+      update: {},
+      create: { name, isActive: true },
+      select: { id: true, name: true },
+    });
+    idByName.set(row.name, row.id);
+  }
+  log(`Departments (${names.length})`);
+  return idByName;
+}
+
+/** Default designations (§253). Admins can add unlimited more at runtime. */
+async function seedDesignations(): Promise<Map<string, string>> {
+  const names = [
+    'Administrator',
+    'Manager',
+    'Sales Executive',
+    'Inventory Executive',
+    'Office Staff',
+  ];
+  const idByName = new Map<string, string>();
+  for (const name of names) {
+    const row = await prisma.designation.upsert({
+      where: { name },
+      update: {},
+      create: { name, isActive: true },
+      select: { id: true, name: true },
+    });
+    idByName.set(row.name, row.id);
+  }
+  log(`Designations (${names.length})`);
+  return idByName;
+}
+
+async function seedAdminUser(
+  roleIdByName: Map<string, string>,
+  departmentIdByName: Map<string, string>,
+  designationIdByName: Map<string, string>,
+): Promise<void> {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@nsquare.local';
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'ChangeMe!Admin123';
   const fullName = process.env.SEED_ADMIN_NAME ?? 'System Administrator';
@@ -168,7 +212,15 @@ async function seedAdminUser(roleIdByName: Map<string, string>): Promise<void> {
 
   await prisma.user.upsert({
     where: { id: authUserId },
-    update: { fullName, email: email.toLowerCase(), roleId: adminRoleId, status: 'ACTIVE' },
+    update: {
+      fullName,
+      email: email.toLowerCase(),
+      roleId: adminRoleId,
+      status: 'ACTIVE',
+      // Keep the catalogue links correct on re-seed (§252, §253).
+      designationId: designationIdByName.get('Administrator'),
+      departmentId: departmentIdByName.get('Management'),
+    },
     create: {
       id: authUserId,
       employeeCode: 'EMP-000001',
@@ -176,12 +228,22 @@ async function seedAdminUser(roleIdByName: Map<string, string>): Promise<void> {
       email: email.toLowerCase(),
       passwordManagedBySupabase: true,
       roleId: adminRoleId,
-      designation: 'Administrator',
-      department: 'Management',
+      designationId: designationIdByName.get('Administrator'),
+      departmentId: departmentIdByName.get('Management'),
+      employmentType: 'FULL_TIME',
       status: 'ACTIVE',
       joiningDate: new Date(),
     },
   });
+  // The admin's code is hardcoded above, so the shared `employee` sequence must
+  // be advanced past it — otherwise the first employee created through the UI
+  // would generate EMP-000001 again and hit the unique constraint.
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO number_sequences (key, prefix, padding, next_value)
+     VALUES ('employee', 'EMP', 6, 2)
+     ON CONFLICT (key) DO UPDATE SET next_value = GREATEST(number_sequences.next_value, 2)`,
+  );
+
   log(`Admin account (${email})`);
 }
 
@@ -190,12 +252,14 @@ async function main(): Promise<void> {
 
   const permissionIdByKey = await seedPermissions();
   const roleIdByName = await seedRoles(permissionIdByKey);
+  const departmentIdByName = await seedDepartments();
+  const designationIdByName = await seedDesignations();
   await seedLeaveTypes();
   await seedExpenseCategories();
   await seedSystemSettings();
 
   if (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    await seedAdminUser(roleIdByName);
+    await seedAdminUser(roleIdByName, departmentIdByName, designationIdByName);
   } else {
     console.warn('  ! Skipped admin account: Supabase credentials not configured.');
   }

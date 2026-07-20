@@ -33,6 +33,40 @@ enum UserStatus {
   TERMINATED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  OTHER
+}
+
+// Employment type (§251)
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  INTERN
+  CONTRACT
+}
+
+// Employee document categories (§255)
+enum EmployeeDocumentType {
+  AADHAAR
+  PAN
+  DRIVING_LICENCE
+  OFFER_LETTER
+  APPOINTMENT_LETTER
+  CERTIFICATE
+  OTHER
+}
+
 enum CustomerType {
   INDIVIDUAL
   BUSINESS
@@ -169,17 +203,43 @@ enum BackupStatus {
 model User {
   id                        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   employeeCode              String     @unique @map("employee_code")
+  // `fullName` stays the canonical display name used across the app; first/last
+  // back it for the §250 profile form and are composed into it on write.
   fullName                  String     @map("full_name")
+  firstName                 String?    @map("first_name")
+  lastName                  String?    @map("last_name")
   email                     String     @unique
   phone                     String?
   passwordManagedBySupabase Boolean    @default(true) @map("password_managed_by_supabase")
   roleId                    String     @map("role_id") @db.Uuid
-  department                String?
-  designation               String?
   profilePhoto              String?    @map("profile_photo")
-  joiningDate               DateTime?  @map("joining_date") @db.Date
   status                    UserStatus @default(ACTIVE)
   lastLoginAt               DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  lastPasswordChangeAt      DateTime?  @map("last_password_change_at") @db.Timestamptz(6)
+
+  // Personal information (§250)
+  alternatePhone        String?        @map("alternate_phone")
+  gender                Gender?
+  dateOfBirth           DateTime?      @map("date_of_birth") @db.Date
+  bloodGroup            String?        @map("blood_group")
+  nationality           String?
+  maritalStatus         MaritalStatus? @map("marital_status")
+  emergencyContactName  String?        @map("emergency_contact_name")
+  emergencyContactPhone String?        @map("emergency_contact_phone")
+  addressLine1          String?        @map("address_line1")
+  addressLine2          String?        @map("address_line2")
+  city                  String?
+  state                 String?
+  postalCode            String?        @map("postal_code")
+
+  // Employment information (§251)
+  departmentId       String?         @map("department_id") @db.Uuid
+  designationId      String?         @map("designation_id") @db.Uuid
+  reportingManagerId String?         @map("reporting_manager_id") @db.Uuid
+  employmentType     EmploymentType? @map("employment_type")
+  joiningDate        DateTime?       @map("joining_date") @db.Date
+  probationEndDate   DateTime?       @map("probation_end_date") @db.Date
+  workLocation       String?         @map("work_location")
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -189,18 +249,102 @@ model User {
   deletedBy String?   @map("deleted_by") @db.Uuid
   isDeleted Boolean   @default(false) @map("is_deleted")
 
-  role          Role           @relation(fields: [roleId], references: [id])
-  userRoles     UserRole[]
-  expenses      Expense[]
-  leaveRequests LeaveRequest[]
-  notifications Notification[]
+  role             Role               @relation(fields: [roleId], references: [id])
+  department       Department?        @relation(fields: [departmentId], references: [id])
+  designation      Designation?       @relation(fields: [designationId], references: [id])
+  reportingManager User?              @relation("UserReportsTo", fields: [reportingManagerId], references: [id])
+  directReports    User[]             @relation("UserReportsTo")
+  managedDepts     Department[]       @relation("DepartmentManager")
+  documents        EmployeeDocument[]
+  userRoles        UserRole[]
+  expenses         Expense[]
+  leaveRequests    LeaveRequest[]
+  notifications    Notification[]
 
   @@index([email])
   @@index([employeeCode])
   @@index([status])
   @@index([roleId])
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([reportingManagerId])
   @@index([isDeleted])
   @@map("users")
+}
+
+// Departments & designations are admin-managed catalogues (§252, §253) — the
+// same "admin can add unlimited" rule that makes leave types and expense
+// categories tables rather than enums.
+model Department {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String  @unique
+  description String?
+  managerId   String? @map("manager_id") @db.Uuid
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  manager   User?  @relation("DepartmentManager", fields: [managerId], references: [id])
+  employees User[]
+
+  @@index([isActive])
+  @@index([isDeleted])
+  @@map("departments")
+}
+
+model Designation {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String  @unique
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  employees User[]
+
+  @@index([isActive])
+  @@index([isDeleted])
+  @@map("designations")
+}
+
+// Employee documents (§255) — files live in a PRIVATE Supabase Storage bucket;
+// only the object path is stored and access is via short-lived signed URLs.
+model EmployeeDocument {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId   String               @map("employee_id") @db.Uuid
+  documentType EmployeeDocumentType @map("document_type")
+  fileName     String               @map("file_name")
+  storagePath  String               @map("storage_path")
+  mimeType     String               @map("mime_type")
+  fileSize     Int                  @map("file_size")
+  remarks      String?
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([documentType])
+  @@index([isDeleted])
+  @@map("employee_documents")
 }
 
 model Role {

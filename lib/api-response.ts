@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import type { ApiError, ApiFailure, ApiSuccess, PaginationMeta } from '@/types/api';
-import { AppError, isAppError, ValidationError } from '@/lib/errors';
+import { AppError, isAppError, normalizeDatabaseError, ValidationError } from '@/lib/errors';
 import { HttpStatus, type HttpStatusCode } from '@/lib/http-status';
 import { logger, serializeError } from '@/lib/logger';
 
@@ -68,7 +68,9 @@ export function zodToApiErrors(error: ZodError): ApiError[] {
  * their message; unknown errors are logged and returned as a generic 500 so
  * that internal details never leak (spec §65).
  */
-export function toErrorResponse(error: unknown, requestId: string = newRequestId()): NextResponse {
+export function toErrorResponse(rawError: unknown, requestId: string = newRequestId()): NextResponse {
+  // Surface database constraint failures as actionable messages (§65).
+  const error = normalizeDatabaseError(rawError);
   if (error instanceof ZodError) {
     return apiFailure(
       'The submitted data is invalid.',

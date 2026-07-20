@@ -90,3 +90,66 @@ export class RateLimitError extends AppError {
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
+
+/**
+ * Shape of a Prisma known-request error, matched structurally so this module
+ * stays free of a runtime `@prisma/client` import.
+ */
+interface PrismaKnownError {
+  code: string;
+  meta?: { target?: unknown; field_name?: unknown; modelName?: unknown };
+}
+
+function asPrismaError(error: unknown): PrismaKnownError | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const candidate = error as { name?: unknown; code?: unknown; meta?: unknown };
+  const isPrisma =
+    typeof candidate.code === 'string' &&
+    /^P\d{4}$/.test(candidate.code) &&
+    typeof candidate.name === 'string' &&
+    candidate.name.startsWith('Prisma');
+  return isPrisma ? (error as unknown as PrismaKnownError) : null;
+}
+
+function targetFields(meta: PrismaKnownError['meta']): string[] {
+  const target = meta?.target;
+  if (Array.isArray(target)) return target.filter((t): t is string => typeof t === 'string');
+  if (typeof target === 'string') return [target];
+  return [];
+}
+
+/**
+ * Translate a Prisma database error into the application hierarchy so callers
+ * see an actionable message instead of a generic failure. Anything unrecognised
+ * is returned untouched for the generic handler to log.
+ */
+export function normalizeDatabaseError(error: unknown): unknown {
+  const prismaError = asPrismaError(error);
+  if (!prismaError) return error;
+
+  switch (prismaError.code) {
+    // Unique constraint failed.
+    case 'P2002': {
+      const fields = targetFields(prismaError.meta);
+      const readable = fields
+        .map((f) => f.replace(/_/g, ' ').replace(/\bid\b/, 'reference'))
+        .join(', ');
+      return new ConflictError(
+        readable
+          ? `Another record already uses this ${readable}.`
+          : 'Another record with these details already exists.',
+        fields.map((field) => ({ field, message: 'Already in use.', code: 'unique' })),
+      );
+    }
+    // Foreign key constraint failed.
+    case 'P2003':
+      return new BusinessRuleError(
+        'A related record is missing or still in use, so this change was rejected.',
+      );
+    // Record required but not found.
+    case 'P2025':
+      return new NotFoundError('The requested resource was not found.');
+    default:
+      return error;
+  }
+}

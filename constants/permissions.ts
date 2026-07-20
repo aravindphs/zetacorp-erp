@@ -188,6 +188,30 @@ export const PERMISSION_DEFINITIONS = [
     action: 'reset_password',
     description: 'Reset employee passwords',
   },
+  {
+    key: 'employee.documents',
+    module: 'employee',
+    action: 'documents',
+    description: 'View/upload employee documents',
+  },
+  {
+    key: 'employee.change_role',
+    module: 'employee',
+    action: 'change_role',
+    description: 'Change an employee role',
+  },
+  {
+    key: 'department.manage',
+    module: 'department',
+    action: 'manage',
+    description: 'Manage departments',
+  },
+  {
+    key: 'designation.manage',
+    module: 'designation',
+    action: 'manage',
+    description: 'Manage designations',
+  },
 
   // Announcements
   {
