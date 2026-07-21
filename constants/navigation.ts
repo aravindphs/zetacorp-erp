@@ -22,6 +22,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  TrendingUp,
   UserCog,
   Users,
   Wallet,
@@ -105,7 +106,15 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     label: 'Insights',
-    items: [{ label: 'Reports', href: '/reports', icon: BarChart3, permission: 'report.view' }],
+    items: [
+      { label: 'Reports', href: '/reports', icon: BarChart3, permission: 'report.view' },
+      {
+        label: 'Executive',
+        href: '/reports/executive',
+        icon: TrendingUp,
+        permission: 'report.view',
+      },
+    ],
   },
   {
     label: 'Administration',

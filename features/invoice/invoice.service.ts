@@ -13,6 +13,7 @@ import { applyStockMovement } from '@/services/stock.service';
 import { auditCreate } from '@/lib/db-helpers';
 import { logActivity } from '@/services/activity-log.service';
 import { logAudit } from '@/services/audit-log.service';
+import { recordFinancialTransaction } from '@/services/financial-transaction.service';
 import { getSetting } from '@/features/settings/settings.cache';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/lib/errors';
 import { CODE_PREFIX } from '@/constants/app';
@@ -99,6 +100,19 @@ async function postWithinTx(
     where: { id: invoiceId },
     data: { status: 'POSTED', postedAt: new Date(), paymentStatus, updatedBy: userId },
   });
+
+  // Posting is the point revenue is recognised, so it books a ledger entry
+  // (Financial Engine, §311). Same transaction — the ledger cannot drift.
+  await recordFinancialTransaction(tx, {
+    type: 'INVOICE_POSTED',
+    debit: invoice.grandTotal,
+    customerId: invoice.customerId,
+    invoiceId,
+    reference: invoice.invoiceNumber,
+    userId,
+    occurredAt: invoice.invoiceDate,
+  });
+
   await logAudit(
     { userId, action: 'INVOICE_POST', module: 'invoice', referenceId: invoiceId, newValue: { invoiceNumber: invoice.invoiceNumber } },
     tx,
@@ -218,6 +232,19 @@ export async function cancelInvoice(user: AuthUser, id: string, reason: string) 
       where: { id },
       data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason, updatedBy: user.id },
     });
+
+    // The ledger is append-only, so cancelling posts a reversing entry rather
+    // than deleting the original — otherwise the cancelled invoice would keep
+    // inflating the customer balance and revenue reports (§311).
+    await recordFinancialTransaction(tx, {
+      type: 'CREDIT_NOTE',
+      credit: invoice.grandTotal,
+      customerId: invoice.customerId,
+      invoiceId: id,
+      reference: `Cancelled ${invoice.invoiceNumber}`,
+      userId: user.id,
+    });
+
     await logAudit(
       { userId: user.id, action: 'INVOICE_CANCEL', module: 'invoice', referenceId: id, oldValue: { invoiceNumber: invoice.invoiceNumber, reason } },
       tx,
@@ -272,6 +299,19 @@ export async function recordPayment(user: AuthUser, invoiceId: string, input: Re
       where: { id: invoiceId },
       data: { amountPaid, balanceDue: newBalance, paymentStatus, updatedBy: user.id },
     });
+
+    // Money in — book the matching ledger entry (Financial Engine, §311).
+    await recordFinancialTransaction(tx, {
+      type: 'PAYMENT_RECEIVED',
+      credit: created.amount,
+      customerId: invoice.customerId,
+      invoiceId,
+      paymentId: created.id,
+      reference: created.paymentNumber,
+      userId: user.id,
+      occurredAt: created.paymentDate,
+    });
+
     return created;
   });
 

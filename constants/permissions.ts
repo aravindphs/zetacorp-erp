@@ -275,9 +275,49 @@ export const PERMISSION_DEFINITIONS = [
     description: 'Publish announcements',
   },
 
-  // Reports
+  // Reports (§339). The spec writes these as `reports.*`; the codebase already
+  // uses the singular `report.` prefix, so that convention is kept.
   { key: 'report.view', module: 'report', action: 'view', description: 'View reports' },
   { key: 'report.export', module: 'report', action: 'export', description: 'Export reports' },
+  { key: 'report.sales', module: 'report', action: 'sales', description: 'View sales reports' },
+  {
+    key: 'report.customers',
+    module: 'report',
+    action: 'customers',
+    description: 'View customer reports',
+  },
+  {
+    key: 'report.inventory',
+    module: 'report',
+    action: 'inventory',
+    description: 'View inventory reports',
+  },
+  {
+    key: 'report.invoices',
+    module: 'report',
+    action: 'invoices',
+    description: 'View invoice reports',
+  },
+  {
+    key: 'report.payments',
+    module: 'report',
+    action: 'payments',
+    description: 'View payment reports',
+  },
+  {
+    key: 'report.employees',
+    module: 'report',
+    action: 'employees',
+    description: 'View employee reports',
+  },
+  { key: 'report.leaves', module: 'report', action: 'leaves', description: 'View leave reports' },
+  {
+    key: 'report.expenses',
+    module: 'report',
+    action: 'expenses',
+    description: 'View expense reports',
+  },
+  { key: 'report.audit', module: 'report', action: 'audit', description: 'View audit reports' },
 
   // Roles & permissions administration
   { key: 'role.view', module: 'role', action: 'view', description: 'View roles' },

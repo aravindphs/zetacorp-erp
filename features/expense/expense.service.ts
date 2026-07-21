@@ -8,12 +8,12 @@ import 'server-only';
  * claim's own status. Reimbursement writes an append-only Financial
  * Transaction (§311).
  */
-import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { generateCode } from '@/lib/code-generator';
 import { auditCreate, auditUpdate } from '@/lib/db-helpers';
 import { logActivity } from '@/services/activity-log.service';
 import { logAudit } from '@/services/audit-log.service';
+import { recordFinancialTransaction } from '@/services/financial-transaction.service';
 import { getSetting } from '@/features/settings/settings.cache';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { CODE_PREFIX } from '@/constants/app';
@@ -296,21 +296,13 @@ export async function reimburseExpense(
 
     // Append-only ledger entry (§311). A reimbursement is money out, so it is
     // recorded as a debit.
-    const transactionNumber = await generateCode(tx, {
-      key: `financial_txn:${paymentDate.getFullYear()}`,
-      prefix: `FTX-${paymentDate.getFullYear()}`,
-    });
-    await tx.financialTransaction.create({
-      data: {
-        transactionNumber,
-        transactionType: 'EXPENSE_REIMBURSED',
-        expenseId: id,
-        debit: expense.amount,
-        credit: 0,
-        balance: new Prisma.Decimal(0).minus(expense.amount),
-        reference: input.referenceNumber ?? expense.expenseNumber,
-        createdBy: user.id,
-      },
+    const { transactionNumber } = await recordFinancialTransaction(tx, {
+      type: 'EXPENSE_REIMBURSED',
+      debit: expense.amount,
+      expenseId: id,
+      reference: input.referenceNumber ?? expense.expenseNumber,
+      userId: user.id,
+      occurredAt: paymentDate,
     });
 
     await logAudit(

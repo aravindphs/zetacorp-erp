@@ -93,6 +93,16 @@ const MANAGER_PERMISSIONS: readonly PermissionKey[] = [
   'announcement.view',
   'report.view',
   'report.export',
+  // Operational reports; audit reporting stays Admin-only (§331 covers
+  // role/permission changes and other security-sensitive events).
+  'report.sales',
+  'report.customers',
+  'report.inventory',
+  'report.invoices',
+  'report.payments',
+  'report.employees',
+  'report.leaves',
+  'report.expenses',
 ];
 
 const STAFF_PERMISSIONS: readonly PermissionKey[] = [
