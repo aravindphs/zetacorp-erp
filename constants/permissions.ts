@@ -154,6 +154,26 @@ export const PERMISSION_DEFINITIONS = [
   { key: 'expense.update', module: 'expense', action: 'update', description: 'Edit expenses' },
   { key: 'expense.delete', module: 'expense', action: 'delete', description: 'Delete expenses' },
   {
+    key: 'expense.cancel',
+    module: 'expense',
+    action: 'cancel',
+    description: 'Cancel expense claims',
+  },
+  { key: 'expense.reject', module: 'expense', action: 'reject', description: 'Reject expenses' },
+  {
+    key: 'expense.reimburse',
+    module: 'expense',
+    action: 'reimburse',
+    description: 'Record expense reimbursements',
+  },
+  { key: 'expense.export', module: 'expense', action: 'export', description: 'Export expenses' },
+  {
+    key: 'expense.category.manage',
+    module: 'expense',
+    action: 'category_manage',
+    description: 'Manage expense categories',
+  },
+  {
     key: 'expense.approve',
     module: 'expense',
     action: 'approve',

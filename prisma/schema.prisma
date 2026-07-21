@@ -162,6 +162,27 @@ enum ExpenseStatus {
   CANCELLED
 }
 
+/** Receipt kinds accepted against an expense claim (§305). */
+enum ExpenseReceiptType {
+  INVOICE
+  BILL
+  RECEIPT
+  TRAVEL_TICKET
+  OTHER
+}
+
+/**
+ * Financial Engine ledger entry types (Module 6 "Financial Engine", §311).
+ * Invoice/payment entries are not yet written — see the module note.
+ */
+enum FinancialTransactionType {
+  INVOICE_POSTED
+  PAYMENT_RECEIVED
+  EXPENSE_REIMBURSED
+  REFUND
+  CREDIT_NOTE
+}
+
 enum LeaveStatus {
   DRAFT
   PENDING
@@ -884,6 +905,22 @@ model Expense {
   approvedAt        DateTime?     @map("approved_at") @db.Timestamptz(6)
   approvalRemarks   String?       @map("approval_remarks")
 
+  // Expense information (§304)
+  currency        String  @default("INR")
+  description     String?
+  vendorName      String? @map("vendor_name")
+  referenceNumber String? @map("reference_number")
+
+  // Reimbursement (§308) — set by finance once the claim is approved.
+  reimbursedAt            DateTime?      @map("reimbursed_at") @db.Timestamptz(6)
+  reimbursedBy            String?        @map("reimbursed_by") @db.Uuid
+  reimbursementMethod     PaymentMethod? @map("reimbursement_method")
+  reimbursementReference  String?        @map("reimbursement_reference")
+  reimbursementRemarks    String?        @map("reimbursement_remarks")
+
+  /** Open workflow instance in the approval engine (§307). */
+  approvalRequestId String? @map("approval_request_id") @db.Uuid
+
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   createdBy String?   @map("created_by") @db.Uuid
@@ -892,16 +929,82 @@ model Expense {
   deletedBy String?   @map("deleted_by") @db.Uuid
   isDeleted Boolean   @default(false) @map("is_deleted")
 
-  employee User            @relation(fields: [employeeId], references: [id])
-  category ExpenseCategory @relation(fields: [expenseCategoryId], references: [id])
+  employee     User                   @relation(fields: [employeeId], references: [id])
+  category     ExpenseCategory        @relation(fields: [expenseCategoryId], references: [id])
+  receipts     ExpenseReceipt[]
+  transactions FinancialTransaction[]
 
   @@index([expenseNumber])
   @@index([employeeId])
   @@index([expenseCategoryId])
   @@index([status])
   @@index([expenseDate])
+  @@index([approvalRequestId])
   @@index([isDeleted])
   @@map("expenses")
+}
+
+/**
+ * Expense receipts (§305). Files live in the PRIVATE Storage bucket; only the
+ * object path is stored and access is via short-lived signed URLs.
+ */
+model ExpenseReceipt {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  expenseId   String             @map("expense_id") @db.Uuid
+  receiptType ExpenseReceiptType @default(RECEIPT) @map("receipt_type")
+  fileName    String             @map("file_name")
+  storagePath String             @map("storage_path")
+  mimeType    String             @map("mime_type")
+  fileSize    Int                @map("file_size")
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy String?   @map("deleted_by") @db.Uuid
+  isDeleted Boolean   @default(false) @map("is_deleted")
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+  @@index([isDeleted])
+  @@map("expense_receipts")
+}
+
+/**
+ * Financial Engine ledger (Module 6 "Financial Engine" block, §311).
+ * Append-only: entries are never edited or deleted.
+ *
+ * NOTE: only expense reimbursements currently write here. Invoice-posted and
+ * payment-received entries are a known gap carried over from Modules 5–6.
+ */
+model FinancialTransaction {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionNumber String                   @unique @map("transaction_number")
+  transactionType   FinancialTransactionType @map("transaction_type")
+  invoiceId         String?                  @map("invoice_id") @db.Uuid
+  paymentId         String?                  @map("payment_id") @db.Uuid
+  customerId        String?                  @map("customer_id") @db.Uuid
+  expenseId         String?                  @map("expense_id") @db.Uuid
+  debit             Decimal                  @default(0) @db.Decimal(14, 2)
+  credit            Decimal                  @default(0) @db.Decimal(14, 2)
+  balance           Decimal                  @default(0) @db.Decimal(14, 2)
+  reference         String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+
+  expense Expense? @relation(fields: [expenseId], references: [id])
+
+  @@index([transactionNumber])
+  @@index([transactionType])
+  @@index([invoiceId])
+  @@index([paymentId])
+  @@index([customerId])
+  @@index([expenseId])
+  @@index([createdAt])
+  @@map("financial_transactions")
 }
 
 // ---------------------------------------------------------------------------
