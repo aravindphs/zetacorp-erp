@@ -122,6 +122,18 @@ enum QuotationStatus {
   CANCELLED
 }
 
+/**
+ * How an invoice is priced and printed.
+ *  ITEMIZED        — per-product lines (deducts stock).
+ *  SPLIT           — one contract value split goods/service at two GST rates.
+ *  MATERIALS_ONLY  — one contract value, single GST rate.
+ */
+enum InvoiceBillingType {
+  ITEMIZED
+  SPLIT
+  MATERIALS_ONLY
+}
+
 enum InvoiceStatus {
   DRAFT
   POSTED
@@ -310,6 +322,7 @@ model User {
   leaveRequests    LeaveRequest[]
   delegatedLeaves  LeaveRequest[]     @relation("LeaveDelegate")
   notifications    Notification[]
+  acknowledgements AnnouncementAcknowledgement[]
 
   @@index([email])
   @@index([employeeCode])
@@ -775,6 +788,27 @@ model Invoice {
   reverseCharge   Boolean              @default(false) @map("reverse_charge")
   notes           String?
   termsConditions String?              @map("terms_conditions")
+
+  // Contract-value billing (solar EPC). For SPLIT / MATERIALS_ONLY the agreed
+  // `contractValue` is normally GST-INCLUSIVE and the taxable value is
+  // back-calculated from it — see `calculateContractInvoice`.
+  billingType          InvoiceBillingType @default(ITEMIZED) @map("billing_type")
+  isTaxInclusive       Boolean            @default(true) @map("is_tax_inclusive")
+  contractValue        Decimal?           @map("contract_value") @db.Decimal(14, 2)
+  goodsRatio           Decimal            @default(70) @map("goods_ratio") @db.Decimal(5, 2)
+  goodsGstPercentage   Decimal            @default(5) @map("goods_gst_percentage") @db.Decimal(5, 2)
+  serviceGstPercentage Decimal            @default(18) @map("service_gst_percentage") @db.Decimal(5, 2)
+  goodsHsnCode         String?            @default("8541") @map("goods_hsn_code")
+  serviceSacCode       String?            @default("9954") @map("service_sac_code")
+  goodsDescription     String?            @map("goods_description")
+  serviceDescription   String?            @map("service_description")
+
+  /**
+   * Bill-to address printed on the document. Snapshotted from the customer's
+   * default address when the invoice is raised, then editable — the printed
+   * address must not change if the customer record is later edited.
+   */
+  billingAddress String? @map("billing_address")
   postedAt        DateTime?            @map("posted_at") @db.Timestamptz(6)
   cancelledAt     DateTime?            @map("cancelled_at") @db.Timestamptz(6)
   cancelReason    String?              @map("cancel_reason")
@@ -1195,11 +1229,33 @@ model Announcement {
   deletedBy String?   @map("deleted_by") @db.Uuid
   isDeleted Boolean   @default(false) @map("is_deleted")
 
+  acknowledgements AnnouncementAcknowledgement[]
+
   @@index([priority])
   @@index([isPublished])
   @@index([publishDate])
   @@index([isDeleted])
   @@map("announcements")
+}
+
+/**
+ * Records that a user has acknowledged a published announcement. Until a row
+ * exists here the announcement is presented as a blocking prompt, so this is
+ * the audit trail proving each targeted user actually saw it.
+ */
+model AnnouncementAcknowledgement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  announcementId String   @map("announcement_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(6)
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+  @@index([announcementId])
+  @@map("announcement_acknowledgements")
 }
 
 model Notification {

@@ -226,6 +226,13 @@ export async function convertQuotationToInvoice(user: AuthUser, id: string) {
     notes: quotation.remarks ?? undefined,
     termsConditions: quotation.termsConditions ?? undefined,
     postNow: false,
+    // Quotations are still itemized, so the converted invoice keeps its product
+    // lines and stock behaviour. Contract billing reaches quotations next.
+    billingType: 'ITEMIZED',
+    isTaxInclusive: false,
+    goodsRatio: 70,
+    goodsGstPercentage: 5,
+    serviceGstPercentage: 18,
     items: quotation.items.map((it) => ({
       productId: it.productId ?? undefined,
       productName: it.productName,

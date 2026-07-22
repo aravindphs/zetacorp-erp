@@ -8,6 +8,7 @@ import { getSetting } from '@/features/settings/settings.cache';
 import { getQuotationDetail } from '@/features/quotation/quotation.queries';
 import { generateInvoicePdf, type InvoicePdfData } from '@/features/invoice/invoice.pdf';
 import { formatDate } from '@/utils/format';
+import { COMPANY_NAME } from '@/constants/app';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,12 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
   const billing = q.customer.addresses[0];
   const data: InvoicePdfData = {
     company: {
-      name: await getSetting('company.name', 'NSquare Energies'),
+      name: await getSetting('company.name', COMPANY_NAME),
       gstin: await getSetting('company.gst_number', ''),
       address: await getSetting('company.address', ''),
       phone: await getSetting('company.phone', ''),
       email: await getSetting('company.email', ''),
+      state: await getSetting<string>('company.state', ''),
     },
     invoice: {
       number: q.quotationNumber,
@@ -48,20 +50,24 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
       gstin: q.customer.gstNumber,
       phone: q.customer.phone,
     },
-    items: q.items.map((i) => ({
-      name: i.productName,
-      hsn: i.hsnCode ?? '',
-      qty: i.quantity.toNumber(),
-      unit: i.unit,
-      rate: i.unitPrice.toNumber(),
-      discount: i.discount.toNumber(),
-      taxable: i.taxableValue.toNumber(),
-      gstPct: i.gstPercentage.toNumber(),
-      amount: i.lineTotal.toNumber(),
-    })),
+    // Quotations remain itemized for now; contract billing lands here next.
+    rows: q.items.map((i) => {
+      const gst = i.gstAmount.toNumber();
+      const isInter = q.igstAmount.toNumber() > 0;
+      const half = Math.round((gst / 2) * 100) / 100;
+      const rate = i.gstPercentage.toNumber();
+      return {
+        description: i.productName,
+        hsn: i.hsnCode ?? '',
+        taxable: i.taxableValue.toNumber(),
+        gstRateLabel: isInter ? `${rate}% (IGST)` : `${rate}% (${rate / 2}+${rate / 2})`,
+        cgst: isInter ? 0 : half,
+        sgst: isInter ? 0 : Math.round((gst - half) * 100) / 100,
+        igst: isInter ? gst : 0,
+        total: i.lineTotal.toNumber(),
+      };
+    }),
     totals: {
-      subtotal: q.subtotal.toNumber(),
-      discount: q.discount.toNumber(),
       taxable: q.taxableAmount.toNumber(),
       cgst: q.cgstAmount.toNumber(),
       sgst: q.sgstAmount.toNumber(),

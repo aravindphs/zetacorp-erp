@@ -23,9 +23,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatCurrency } from '@/utils/format';
-import { calculateInvoice } from '@/features/invoice/invoice.calc';
+import { calculateContractInvoice, calculateInvoice } from '@/features/invoice/invoice.calc';
 import { createInvoiceAction } from '@/features/invoice/invoice.actions';
 import { ProductPicker, type PickerProduct } from '@/features/invoice/components/product-picker';
+
+type BillingType = 'ITEMIZED' | 'SPLIT' | 'MATERIALS_ONLY';
+
+const BILLING_TYPE_LABELS: Record<BillingType, string> = {
+  SPLIT: 'Goods + service split (70/30)',
+  MATERIALS_ONLY: 'Materials only',
+  ITEMIZED: 'Itemized products',
+};
 
 interface LineItem {
   key: string;
@@ -57,7 +65,7 @@ export function InvoiceForm({
   canPost,
   companyState,
 }: {
-  customers: { id: string; code: string; name: string }[];
+  customers: { id: string; code: string; name: string; address?: string }[];
   initialCustomerId?: string;
   canPost: boolean;
   companyState: string;
@@ -78,21 +86,96 @@ export function InvoiceForm({
   const [terms, setTerms] = useState('');
   const [items, setItems] = useState<LineItem[]>([newLine()]);
 
-  const totals = useMemo(
-    () =>
-      calculateInvoice({
+  // Contract billing (solar EPC). The contract value is GST-inclusive, so the
+  // taxable split is back-calculated — see calculateContractInvoice.
+  const [billingType, setBillingType] = useState<BillingType>('SPLIT');
+  const [contractValue, setContractValue] = useState(0);
+  const [isTaxInclusive, setIsTaxInclusive] = useState(true);
+  const [goodsRatio, setGoodsRatio] = useState(70);
+  const [goodsGst, setGoodsGst] = useState(5);
+  const [serviceGst, setServiceGst] = useState(18);
+  const [goodsHsn, setGoodsHsn] = useState('8541');
+  const [serviceSac, setServiceSac] = useState('9954');
+  const [goodsDesc, setGoodsDesc] = useState('');
+  const [serviceDesc, setServiceDesc] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+
+  const isContract = billingType !== 'ITEMIZED';
+
+  const totals = useMemo(() => {
+    if (isContract) {
+      const contract = calculateContractInvoice({
+        contractValue: contractValue || 0,
+        isTaxInclusive,
+        billingType,
+        goodsRatio,
+        goodsGstPercentage: goodsGst,
+        serviceGstPercentage: serviceGst,
+        companyState,
+        placeOfSupply,
+      });
+
+      // Additional products are billed on top of the contract value. The server
+      // does the same in computeTotals — keep this preview in step with it.
+      const extras = calculateInvoice({
         lines: items.map((i) => ({
           quantity: i.quantity || 0,
           unitPrice: i.unitPrice || 0,
           discount: i.discount || 0,
           gstPercentage: i.gstPercentage || 0,
         })),
-        overallDiscount,
         companyState,
         placeOfSupply,
-      }),
-    [items, overallDiscount, companyState, placeOfSupply],
-  );
+      });
+
+      const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+      return {
+        ...contract,
+        taxableAmount: r2(contract.taxableAmount + extras.taxableAmount),
+        gstAmount: r2(contract.gstAmount + extras.gstAmount),
+        cgstAmount: r2(contract.cgstAmount + extras.cgstAmount),
+        sgstAmount: r2(contract.sgstAmount + extras.sgstAmount),
+        igstAmount: r2(contract.igstAmount + extras.igstAmount),
+        grandTotal: r2(contract.grandTotal + extras.taxableAmount + extras.gstAmount),
+      };
+    }
+    return calculateInvoice({
+      lines: items.map((i) => ({
+        quantity: i.quantity || 0,
+        unitPrice: i.unitPrice || 0,
+        discount: i.discount || 0,
+        gstPercentage: i.gstPercentage || 0,
+      })),
+      overallDiscount,
+      companyState,
+      placeOfSupply,
+    });
+  }, [
+    isContract,
+    billingType,
+    contractValue,
+    isTaxInclusive,
+    goodsRatio,
+    goodsGst,
+    serviceGst,
+    items,
+    overallDiscount,
+    companyState,
+    placeOfSupply,
+  ]);
+
+  /**
+   * Choosing a customer pre-fills the bill-to address from their default
+   * address. An address the user has already edited is left alone.
+   */
+  function selectCustomer(id: string) {
+    setCustomerId(id);
+    const picked = customers.find((c) => c.id === id);
+    const previous = customers.find((c) => c.id === customerId)?.address ?? '';
+    if (picked && (!billingAddress.trim() || billingAddress === previous)) {
+      setBillingAddress(picked.address ?? '');
+    }
+  }
 
   function updateLine(key: string, patch: Partial<LineItem>) {
     setItems((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -123,8 +206,12 @@ export function InvoiceForm({
       return;
     }
     const validItems = items.filter((l) => l.productName.trim() && l.quantity > 0);
-    if (validItems.length === 0) {
+    if (!isContract && validItems.length === 0) {
       toast.error('Add at least one product line.');
+      return;
+    }
+    if (isContract && contractValue <= 0) {
+      toast.error('Enter the agreed contract value.');
       return;
     }
     startTransition(async () => {
@@ -139,16 +226,29 @@ export function InvoiceForm({
         notes: notes || undefined,
         termsConditions: terms || undefined,
         postNow,
-        items: validItems.map((l) => ({
-          productId: l.productId,
-          productName: l.productName,
-          hsnCode: l.hsnCode || undefined,
-          unit: l.unit,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          discount: l.discount,
-          gstPercentage: l.gstPercentage,
-        })),
+        billingType,
+        isTaxInclusive,
+        contractValue: isContract ? contractValue : undefined,
+        goodsRatio,
+        goodsGstPercentage: goodsGst,
+        serviceGstPercentage: serviceGst,
+        goodsHsnCode: goodsHsn || undefined,
+        serviceSacCode: serviceSac || undefined,
+        goodsDescription: goodsDesc || undefined,
+        serviceDescription: serviceDesc || undefined,
+        billingAddress: billingAddress || undefined,
+        items: isContract
+          ? []
+          : validItems.map((l) => ({
+              productId: l.productId,
+              productName: l.productName,
+              hsnCode: l.hsnCode || undefined,
+              unit: l.unit,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+              discount: l.discount,
+              gstPercentage: l.gstPercentage,
+            })),
       });
       if (result.success) {
         toast.success(result.message);
@@ -173,7 +273,7 @@ export function InvoiceForm({
             <Select
               items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${c.code})`]))}
               value={customerId}
-              onValueChange={(v) => setCustomerId(v ?? '')}
+              onValueChange={(v) => selectCustomer(v ?? '')}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select customer" />
@@ -206,12 +306,174 @@ export function InvoiceForm({
           <label className="flex items-end gap-2 pb-2 text-sm">
             <Switch checked={reverseCharge} onCheckedChange={setReverseCharge} /> Reverse charge
           </label>
+          <div className="space-y-2 sm:col-span-3">
+            <Label htmlFor="billaddr">Bill to / site address</Label>
+            <Textarea
+              id="billaddr"
+              rows={2}
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
+              placeholder="Street, city, state, postal code"
+            />
+            <p className="text-xs text-muted-foreground">
+              Pre-filled from the customer&apos;s default address. Edit it here to change only what
+              this invoice prints.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Billing type & contract value (solar EPC split billing). */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Billing</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Billing type</Label>
+            <Select
+              items={BILLING_TYPE_LABELS}
+              value={billingType}
+              onValueChange={(v) => setBillingType((v as BillingType) ?? 'SPLIT')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(BILLING_TYPE_LABELS).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>
+                    {l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isContract && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="contract">
+                  Contract value (₹) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="contract"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={contractValue || ''}
+                  onChange={(e) => setContractValue(Number(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {isTaxInclusive
+                    ? 'The agreed price including GST — the taxable value is derived from it.'
+                    : 'Pre-tax value; GST will be added on top.'}
+                </p>
+              </div>
+
+              <label className="flex items-end gap-2 pb-2 text-sm sm:col-span-2">
+                <Switch checked={isTaxInclusive} onCheckedChange={setIsTaxInclusive} />
+                Contract value includes GST
+              </label>
+
+              {billingType === 'SPLIT' && (
+                <div className="space-y-2">
+                  <Label htmlFor="ratio">Goods share (%)</Label>
+                  <Input
+                    id="ratio"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={100}
+                    value={goodsRatio}
+                    onChange={(e) => setGoodsRatio(Number(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Service share: {Math.round((100 - goodsRatio) * 100) / 100}%
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="ggst">
+                  {billingType === 'SPLIT' ? 'Goods GST (%)' : 'GST (%)'}
+                </Label>
+                <Input
+                  id="ggst"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={28}
+                  value={goodsGst}
+                  onChange={(e) => setGoodsGst(Number(e.target.value))}
+                />
+              </div>
+
+              {billingType === 'SPLIT' && (
+                <div className="space-y-2">
+                  <Label htmlFor="sgst">Service GST (%)</Label>
+                  <Input
+                    id="sgst"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={28}
+                    value={serviceGst}
+                    onChange={(e) => setServiceGst(Number(e.target.value))}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="ghsn">{billingType === 'SPLIT' ? 'Goods HSN' : 'HSN'}</Label>
+                <Input id="ghsn" value={goodsHsn} onChange={(e) => setGoodsHsn(e.target.value)} />
+              </div>
+
+              {billingType === 'SPLIT' && (
+                <div className="space-y-2">
+                  <Label htmlFor="ssac">Service SAC</Label>
+                  <Input
+                    id="ssac"
+                    value={serviceSac}
+                    onChange={(e) => setServiceSac(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="gdesc">
+                  {billingType === 'SPLIT' ? 'Goods description' : 'Description'}
+                </Label>
+                <Textarea
+                  id="gdesc"
+                  rows={2}
+                  placeholder="Supply of Solar Power Generating System equipment"
+                  value={goodsDesc}
+                  onChange={(e) => setGoodsDesc(e.target.value)}
+                />
+              </div>
+
+              {billingType === 'SPLIT' && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="sdesc">Service description</Label>
+                  <Textarea
+                    id="sdesc"
+                    rows={2}
+                    placeholder="Installation, erection & commissioning services"
+                    value={serviceDesc}
+                    onChange={(e) => setServiceDesc(e.target.value)}
+                  />
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Items</CardTitle>
+          <CardTitle className="text-base">
+            {isContract ? 'Additional products (optional)' : 'Items'}
+          </CardTitle>
           <div className="flex gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
               <Plus className="size-4" /> Add product
@@ -248,6 +510,12 @@ export function InvoiceForm({
               </Button>
             </div>
           ))}
+          {isContract && (
+            <p className="text-xs text-muted-foreground">
+              These are billed in addition to the contract value and appear as extra rows on the
+              invoice. Leave blank if the contract value covers everything.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -277,8 +545,20 @@ export function InvoiceForm({
             <CardTitle className="text-base">Summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            <SummaryRow label="Subtotal" value={totals.subtotal} />
-            {totals.totalDiscount > 0 && <SummaryRow label="Discount" value={-totals.totalDiscount} />}
+            {!isContract && 'subtotal' in totals && (
+              <>
+                <SummaryRow label="Subtotal" value={totals.subtotal} />
+                {totals.totalDiscount > 0 && (
+                  <SummaryRow label="Discount" value={-totals.totalDiscount} />
+                )}
+              </>
+            )}
+            {isContract && (
+              <SummaryRow
+                label={isTaxInclusive ? 'Contract value (incl. GST)' : 'Contract value'}
+                value={contractValue || 0}
+              />
+            )}
             <SummaryRow label="Taxable" value={totals.taxableAmount} />
             {totals.isInterState ? (
               <SummaryRow label="IGST" value={totals.igstAmount} />

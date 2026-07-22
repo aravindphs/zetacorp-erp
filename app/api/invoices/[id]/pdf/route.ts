@@ -7,6 +7,8 @@ import { logActivity } from '@/services/activity-log.service';
 import { getSetting } from '@/features/settings/settings.cache';
 import { getInvoiceDetail } from '@/features/invoice/invoice.queries';
 import { generateInvoicePdf, type InvoicePdfData } from '@/features/invoice/invoice.pdf';
+import { buildPdfRows } from '@/features/invoice/invoice.pdf-data';
+import { COMPANY_NAME } from '@/constants/app';
 import { formatDate } from '@/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -21,13 +23,16 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
   if (!invoice) throw new NotFoundError('Invoice not found.');
 
   const billing = invoice.customer.addresses[0];
+  const isInterState = invoice.igstAmount.toNumber() > 0;
+
   const data: InvoicePdfData = {
     company: {
-      name: await getSetting('company.name', 'NSquare Energies'),
+      name: await getSetting('company.name', COMPANY_NAME),
       gstin: await getSetting('company.gst_number', ''),
       address: await getSetting('company.address', ''),
       phone: await getSetting('company.phone', ''),
       email: await getSetting('company.email', ''),
+      state: await getSetting<string>('company.state', ''),
     },
     invoice: {
       number: invoice.invoiceNumber,
@@ -42,26 +47,21 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
     customer: {
       name: invoice.customer.customerName,
       company: invoice.customer.companyName,
-      address: billing
-        ? `${billing.addressLine1}, ${billing.city}, ${billing.state} ${billing.postalCode}`
-        : null,
+      // The invoice snapshots its own bill-to address (editable at creation);
+      // fall back to the customer's default address for older records.
+      address:
+        invoice.billingAddress?.trim() ||
+        (billing
+          ? [billing.addressLine1, billing.addressLine2, billing.city, billing.state, billing.postalCode]
+              .map((p) => p?.trim())
+              .filter(Boolean)
+              .join(', ')
+          : null),
       gstin: invoice.customer.gstNumber,
       phone: invoice.customer.phone,
     },
-    items: invoice.items.map((i) => ({
-      name: i.productName,
-      hsn: i.hsnCode ?? '',
-      qty: i.quantity.toNumber(),
-      unit: i.unit,
-      rate: i.unitPrice.toNumber(),
-      discount: i.discount.toNumber(),
-      taxable: i.taxableValue.toNumber(),
-      gstPct: i.gstPercentage.toNumber(),
-      amount: i.lineTotal.toNumber(),
-    })),
+    rows: buildPdfRows(invoice, invoice.items, isInterState),
     totals: {
-      subtotal: invoice.subtotal.toNumber(),
-      discount: invoice.discount.toNumber(),
       taxable: invoice.taxableAmount.toNumber(),
       cgst: invoice.cgstAmount.toNumber(),
       sgst: invoice.sgstAmount.toNumber(),
@@ -69,7 +69,7 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
       roundOff: invoice.roundOff.toNumber(),
       grandTotal: invoice.grandTotal.toNumber(),
     },
-    isInterState: invoice.igstAmount.toNumber() > 0,
+    isInterState,
   };
 
   const pdf = await generateInvoicePdf(data);

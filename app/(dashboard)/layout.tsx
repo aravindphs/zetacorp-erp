@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppHeader } from '@/components/layout/app-header';
+import { AnnouncementGate } from '@/features/announcement/components/announcement-gate';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -29,6 +30,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <AppHeader />
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
+      {/*
+        Blocks the whole shell until required announcements are acknowledged.
+        Mounted here (not per page) so it survives client-side navigation and
+        checks once per page load rather than on every route change.
+      */}
+      <AnnouncementGate />
     </SidebarProvider>
   );
 }

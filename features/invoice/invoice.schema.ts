@@ -30,15 +30,39 @@ export const createInvoiceSchema = z
     referenceNumber: optionalString(100),
     reverseCharge: z.boolean().default(false),
     overallDiscount: z.coerce.number().min(0).default(0),
-    notes: optionalString(2000),
+    notes: optionalString(4000),
     termsConditions: optionalString(2000),
-    items: z.array(invoiceLineSchema).min(1, 'Add at least one product.'),
+    /** Itemized invoices carry product lines; contract billing does not. */
+    items: z.array(invoiceLineSchema).default([]),
     /** Post immediately after creation (deduct stock). */
     postNow: z.boolean().default(false),
+
+    // Contract billing (§ solar EPC). `contractValue` is GST-inclusive by
+    // default and the taxable split is derived from it server-side.
+    billingType: z.enum(['ITEMIZED', 'SPLIT', 'MATERIALS_ONLY']).default('SPLIT'),
+    isTaxInclusive: z.boolean().default(true),
+    contractValue: z.coerce.number().min(0).optional(),
+    goodsRatio: z.coerce.number().min(0).max(100).default(70),
+    goodsGstPercentage: z.coerce.number().min(0).max(28).default(5),
+    serviceGstPercentage: z.coerce.number().min(0).max(28).default(18),
+    goodsHsnCode: optionalString(20),
+    serviceSacCode: optionalString(20),
+    goodsDescription: optionalString(500),
+    serviceDescription: optionalString(500),
+    /** Bill-to address snapshot, pre-filled from the customer and editable. */
+    billingAddress: optionalString(500),
+  })
+  .refine((v) => !v.dueDate || new Date(v.dueDate) >= new Date(v.invoiceDate), {
+    message: 'Due date must be on or after the invoice date.',
+    path: ['dueDate'],
+  })
+  .refine((v) => v.billingType !== 'ITEMIZED' || v.items.length > 0, {
+    message: 'Add at least one product.',
+    path: ['items'],
   })
   .refine(
-    (v) => !v.dueDate || new Date(v.dueDate) >= new Date(v.invoiceDate),
-    { message: 'Due date must be on or after the invoice date.', path: ['dueDate'] },
+    (v) => v.billingType === 'ITEMIZED' || (v.contractValue !== undefined && v.contractValue > 0),
+    { message: 'Enter the agreed contract value.', path: ['contractValue'] },
   );
 
 export const recordPaymentSchema = z.object({

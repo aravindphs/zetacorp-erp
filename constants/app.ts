@@ -3,7 +3,8 @@
  */
 
 export const APP_NAME = 'NSquare ERP';
-export const COMPANY_NAME = 'NSquare Energies';
+/** Legal entity printed on invoices, quotations and receipts. */
+export const COMPANY_NAME = 'ZETACORP SOLUTIONS PVT. LTD.';
 
 /** Auto-generated code prefixes (spec §25, §28, §30, §32, §34, §246, §297). */
 export const CODE_PREFIX = {

@@ -22,7 +22,25 @@ export default async function NewInvoicePage({
       where: { isDeleted: false, status: { in: ['ACTIVE', 'INACTIVE'] } },
       orderBy: { customerName: 'asc' },
       take: 500,
-      select: { id: true, customerCode: true, customerName: true },
+      select: {
+        id: true,
+        customerCode: true,
+        customerName: true,
+        // Default address travels with the option so the bill-to field can be
+        // pre-filled the moment a customer is chosen.
+        addresses: {
+          where: { isDeleted: false },
+          orderBy: { isDefault: 'desc' },
+          take: 1,
+          select: {
+            addressLine1: true,
+            addressLine2: true,
+            city: true,
+            state: true,
+            postalCode: true,
+          },
+        },
+      },
     }),
     getSetting<string>('company.state', ''),
   ]);
@@ -38,7 +56,20 @@ export default async function NewInvoicePage({
         />
       ) : (
         <InvoiceForm
-          customers={customers.map((c) => ({ id: c.id, code: c.customerCode, name: c.customerName }))}
+          customers={customers.map((c) => {
+            const a = c.addresses[0];
+            return {
+              id: c.id,
+              code: c.customerCode,
+              name: c.customerName,
+              address: a
+                ? [a.addressLine1, a.addressLine2, a.city, a.state, a.postalCode]
+                    .map((p) => p?.trim())
+                    .filter(Boolean)
+                    .join(', ')
+                : '',
+            };
+          })}
           initialCustomerId={customerId}
           canPost={hasPermission(user, 'invoice.post')}
           companyState={companyState}

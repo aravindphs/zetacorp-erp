@@ -17,7 +17,12 @@ import { recordFinancialTransaction } from '@/services/financial-transaction.ser
 import { getSetting } from '@/features/settings/settings.cache';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/lib/errors';
 import { CODE_PREFIX } from '@/constants/app';
-import { calculateInvoice, derivePaymentStatus } from '@/features/invoice/invoice.calc';
+import {
+  calculateContractInvoice,
+  calculateInvoice,
+  derivePaymentStatus,
+} from '@/features/invoice/invoice.calc';
+import { defaultInvoiceNotes } from '@/features/invoice/invoice.pdf-data';
 import type { CreateInvoiceInput, RecordPaymentInput } from '@/features/invoice/invoice.schema';
 import type { AuthUser } from '@/types/auth';
 
@@ -26,8 +31,61 @@ function invoiceNumberKey(date: Date) {
   return { key: `invoice:${year}`, prefix: `${CODE_PREFIX.INVOICE}-${year}` };
 }
 
+/**
+ * Server-authoritative totals. Contract-billed invoices back-calculate the
+ * taxable split from the agreed (GST-inclusive) contract value; itemized
+ * invoices sum their product lines as before.
+ */
 async function computeTotals(input: CreateInvoiceInput) {
   const companyState = await getSetting<string>('company.state', '');
+
+  if (input.billingType !== 'ITEMIZED') {
+    const contract = calculateContractInvoice({
+      contractValue: input.contractValue ?? 0,
+      isTaxInclusive: input.isTaxInclusive,
+      billingType: input.billingType,
+      goodsRatio: input.goodsRatio,
+      goodsGstPercentage: input.goodsGstPercentage,
+      serviceGstPercentage: input.serviceGstPercentage,
+      companyState,
+      placeOfSupply: input.placeOfSupply,
+    });
+
+    // Additional product lines are billed ON TOP of the contract value, each
+    // taxed at its own rate.
+    const extras = calculateInvoice({
+      lines: input.items.map((i) => ({
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        discount: i.discount,
+        gstPercentage: i.gstPercentage,
+      })),
+      companyState,
+      placeOfSupply: input.placeOfSupply,
+    });
+
+    const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const taxableAmount = r2(contract.taxableAmount + extras.taxableAmount);
+    const gstAmount = r2(contract.gstAmount + extras.gstAmount);
+    const cgstAmount = r2(contract.cgstAmount + extras.cgstAmount);
+    const sgstAmount = r2(contract.sgstAmount + extras.sgstAmount);
+    const igstAmount = r2(contract.igstAmount + extras.igstAmount);
+
+    return {
+      lines: extras.lines,
+      subtotal: taxableAmount,
+      totalDiscount: extras.totalDiscount,
+      taxableAmount,
+      cgstAmount,
+      sgstAmount,
+      igstAmount,
+      gstAmount,
+      roundOff: contract.roundOff,
+      grandTotal: r2(contract.grandTotal + extras.taxableAmount + extras.gstAmount),
+      isInterState: contract.isInterState,
+    };
+  }
+
   return calculateInvoice({
     lines: input.items.map((i) => ({
       quantity: i.quantity,
@@ -160,8 +218,35 @@ export async function createInvoice(user: AuthUser, input: CreateInvoiceInput) {
         placeOfSupply: input.placeOfSupply,
         referenceNumber: input.referenceNumber,
         reverseCharge: input.reverseCharge,
-        notes: input.notes,
+        // Pre-fill the standard notes block when none was supplied, so the PDF
+        // carries the template boilerplate with live figures.
+        notes:
+          input.notes ??
+          (input.billingType === 'ITEMIZED'
+            ? undefined
+            : defaultInvoiceNotes({
+                goodsRatio: input.billingType === 'SPLIT' ? input.goodsRatio : 100,
+                serviceRatio: input.billingType === 'SPLIT' ? 100 - input.goodsRatio : 0,
+                goodsGst: input.goodsGstPercentage,
+                serviceGst: input.serviceGstPercentage,
+                goodsHsn: input.goodsHsnCode ?? '8541',
+                serviceSac: input.serviceSacCode ?? '9954',
+                grandTotal: totals.grandTotal,
+                isInterState: totals.isInterState,
+                placeOfSupply: input.placeOfSupply,
+              })),
         termsConditions: input.termsConditions,
+        billingType: input.billingType,
+        isTaxInclusive: input.isTaxInclusive,
+        contractValue: input.contractValue,
+        goodsRatio: input.goodsRatio,
+        goodsGstPercentage: input.goodsGstPercentage,
+        serviceGstPercentage: input.serviceGstPercentage,
+        goodsHsnCode: input.goodsHsnCode,
+        serviceSacCode: input.serviceSacCode,
+        goodsDescription: input.goodsDescription,
+        serviceDescription: input.serviceDescription,
+        billingAddress: input.billingAddress,
         ...auditCreate(user.id),
         items: {
           create: input.items.map((item, idx) => {

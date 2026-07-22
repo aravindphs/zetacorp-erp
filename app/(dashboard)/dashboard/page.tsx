@@ -1,7 +1,8 @@
-import type { Metadata } from 'next';
+﻿import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { requirePermission } from '@/lib/auth/guards';
 import { getSetting } from '@/features/settings/settings.cache';
+import { COMPANY_NAME } from '@/constants/app';
 import { SectionErrorBoundary } from '@/components/shared/error-boundary';
 import { WelcomeHeader } from '@/features/dashboard/components/welcome-header';
 import { QuickActions } from '@/features/dashboard/components/quick-actions';
@@ -28,7 +29,7 @@ function Section({ fallback, children }: { fallback: React.ReactNode; children: 
 
 export default async function DashboardPage() {
   const user = await requirePermission('dashboard.view');
-  const companyName = await getSetting('company.name', 'NSquare Energies');
+  const companyName = await getSetting('company.name', COMPANY_NAME);
 
   return (
     <div className="space-y-6">

@@ -9,6 +9,7 @@ import { getPaymentDetail } from '@/features/payment/payment.queries';
 import { generateReceiptPdf, type ReceiptPdfData } from '@/features/payment/payment.pdf';
 import { PAYMENT_METHOD_LABELS } from '@/features/payment/payment.types';
 import { formatDate } from '@/utils/format';
+import { COMPANY_NAME } from '@/constants/app';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
   const billing = payment.customer.addresses[0];
   const data: ReceiptPdfData = {
     company: {
-      name: await getSetting('company.name', 'NSquare Energies'),
+      name: await getSetting('company.name', COMPANY_NAME),
       gstin: await getSetting('company.gst_number', ''),
       address: await getSetting('company.address', ''),
       phone: await getSetting('company.phone', ''),
