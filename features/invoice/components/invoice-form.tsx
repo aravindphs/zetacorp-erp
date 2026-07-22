@@ -26,6 +26,7 @@ import { formatCurrency } from '@/utils/format';
 import { calculateContractInvoice, calculateInvoice } from '@/features/invoice/invoice.calc';
 import { createInvoiceAction } from '@/features/invoice/invoice.actions';
 import { ProductPicker, type PickerProduct } from '@/features/invoice/components/product-picker';
+import { LineCell } from '@/components/shared/line-cell';
 
 type BillingType = 'ITEMIZED' | 'SPLIT' | 'MATERIALS_ONLY';
 
@@ -494,20 +495,76 @@ export function InvoiceForm({
             <span />
           </div>
           {items.map((line) => (
-            <div key={line.key} className="grid gap-2 sm:grid-cols-[2fr_70px_80px_80px_70px_90px_32px]">
-              <Input
-                value={line.productName}
-                onChange={(e) => updateLine(line.key, { productName: e.target.value })}
-                placeholder="Item / description"
-              />
-              <Input value={line.hsnCode} onChange={(e) => updateLine(line.key, { hsnCode: e.target.value })} placeholder="HSN" />
-              <Input type="number" step="0.001" value={line.quantity} onChange={(e) => updateLine(line.key, { quantity: Number(e.target.value) })} />
-              <Input type="number" step="0.01" value={line.unitPrice} onChange={(e) => updateLine(line.key, { unitPrice: Number(e.target.value) })} />
-              <Input type="number" step="0.01" value={line.discount} onChange={(e) => updateLine(line.key, { discount: Number(e.target.value) })} />
-              <Input type="number" step="0.01" value={line.gstPercentage} onChange={(e) => updateLine(line.key, { gstPercentage: Number(e.target.value) })} />
-              <Button type="button" variant="ghost" size="icon" className="size-9 text-destructive" onClick={() => removeLine(line.key)}>
-                <Trash2 className="size-4" />
-              </Button>
+            <div
+              key={line.key}
+              className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[2fr_70px_80px_80px_70px_90px_32px] sm:items-start sm:rounded-none sm:border-0 sm:p-0"
+            >
+              <LineCell label="Product">
+                <Input
+                  value={line.productName}
+                  onChange={(e) => updateLine(line.key, { productName: e.target.value })}
+                  placeholder="Item / description"
+                />
+              </LineCell>
+              <LineCell label="HSN">
+                <Input
+                  value={line.hsnCode}
+                  onChange={(e) => updateLine(line.key, { hsnCode: e.target.value })}
+                  placeholder="HSN"
+                />
+              </LineCell>
+              <LineCell label="Qty">
+                <Input
+                  type="number"
+                  step="0.001"
+                  inputMode="decimal"
+                  placeholder="Qty"
+                  value={line.quantity}
+                  onChange={(e) => updateLine(line.key, { quantity: Number(e.target.value) })}
+                />
+              </LineCell>
+              <LineCell label="Rate">
+                <Input
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Rate"
+                  value={line.unitPrice}
+                  onChange={(e) => updateLine(line.key, { unitPrice: Number(e.target.value) })}
+                />
+              </LineCell>
+              <LineCell label="Discount">
+                <Input
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Disc"
+                  value={line.discount}
+                  onChange={(e) => updateLine(line.key, { discount: Number(e.target.value) })}
+                />
+              </LineCell>
+              <LineCell label="GST %">
+                <Input
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="GST %"
+                  value={line.gstPercentage}
+                  onChange={(e) => updateLine(line.key, { gstPercentage: Number(e.target.value) })}
+                />
+              </LineCell>
+              <div className="flex justify-end sm:block">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 text-destructive"
+                  onClick={() => removeLine(line.key)}
+                >
+                  <Trash2 className="size-4" />
+                  <span className="ml-1 text-sm sm:hidden">Remove</span>
+                </Button>
+              </div>
             </div>
           ))}
           {isContract && (

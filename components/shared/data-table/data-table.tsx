@@ -6,8 +6,14 @@
  * the page's Server Component fetches the matching slice. TanStack Table is set
  * to manual mode so it never re-paginates/sorts on the client.
  */
-import { useEffect, useState } from 'react';
-import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
+import { Fragment, useEffect, useState } from 'react';
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type Column,
+  type ColumnDef,
+} from '@tanstack/react-table';
 import { Search, X } from 'lucide-react';
 import {
   Table,
@@ -65,39 +71,91 @@ export function DataTable<TData, TValue>({
       ) : data.length === 0 ? (
         <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {/*
+            Below `md:` a wide record table would force horizontal scrolling, so
+            each row is restacked as a card: the first column is the heading
+            (usually the link to the record) and the rest become label/value
+            pairs. Labels come from the column's string header where there is
+            one, otherwise from a humanised column id.
+          */}
+          <div className="space-y-3 md:hidden">
+            {table.getRowModel().rows.map((row) => {
+              const [primary, ...rest] = row.getVisibleCells();
+              return (
+                <div key={row.id} className="rounded-lg border p-3">
+                  {primary && (
+                    <div className="mb-2 font-medium">
+                      {flexRender(primary.column.columnDef.cell, primary.getContext())}
+                    </div>
+                  )}
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+                    {rest.map((cell) => (
+                      <Fragment key={cell.id}>
+                        <dt className="text-muted-foreground">{columnLabel(cell.column)}</dt>
+                        <dd className="text-right">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-lg border md:block">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id}>
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       {meta && data.length > 0 && <DataTablePagination meta={meta} />}
     </div>
   );
+}
+
+/**
+ * Label for a field in the mobile card view. Prefers an explicit string header,
+ * then a `meta.mobileLabel` override, and finally a humanised column id — many
+ * headers are JSX (sortable header components) and carry no usable text.
+ */
+function columnLabel<TData>(column: Column<TData, unknown>): string {
+  const meta = column.columnDef.meta as { mobileLabel?: string } | undefined;
+  if (meta?.mobileLabel) return meta.mobileLabel;
+
+  const header = column.columnDef.header;
+  if (typeof header === 'string') return header;
+
+  return column.id
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (c) => c.toUpperCase())
+    .trim();
 }
 
 function TableSearch({ placeholder }: { placeholder: string }) {
