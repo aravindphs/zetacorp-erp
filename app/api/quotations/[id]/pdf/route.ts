@@ -26,6 +26,7 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
     company: {
       name: await getSetting('company.name', COMPANY_NAME),
       gstin: await getSetting('company.gst_number', ''),
+      cin: await getSetting<string>('company.cin', ''),
       address: await getSetting('company.address', ''),
       phone: await getSetting('company.phone', ''),
       email: await getSetting('company.email', ''),

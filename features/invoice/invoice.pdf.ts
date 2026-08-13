@@ -41,6 +41,7 @@ export interface InvoicePdfData {
   company: {
     name: string;
     gstin: string;
+    cin?: string | null;
     address: string;
     phone: string;
     email: string;
@@ -169,6 +170,10 @@ export async function generateInvoicePdf(
     .join('  |  ');
   if (gstLine) {
     textCenter(gstLine, y, { size: 8, color: MUTED });
+    y -= 11;
+  }
+  if (data.company.cin?.trim()) {
+    textCenter(`CIN: ${data.company.cin.trim()}`, y, { size: 8, color: MUTED });
     y -= 11;
   }
   y -= 4;
