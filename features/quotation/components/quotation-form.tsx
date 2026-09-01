@@ -6,7 +6,7 @@
  */
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ import { formatCurrency } from '@/utils/format';
 import { calculateInvoice } from '@/features/invoice/invoice.calc';
 import { ProductPicker, type PickerProduct } from '@/features/invoice/components/product-picker';
 import { LineCell, LineHeader } from '@/components/shared/line-cell';
+import { NewCustomerDialog } from '@/features/customer/components/new-customer-dialog';
+import { DEFAULT_INVOICE_TERMS } from '@/constants/app';
 import { createQuotationAction } from '@/features/quotation/quotation.actions';
 
 interface LineItem {
@@ -65,13 +67,16 @@ export function QuotationForm({
 
   const today = new Date().toISOString().slice(0, 10);
   const [customerId, setCustomerId] = useState(initialCustomerId ?? '');
+  // Local copy so an inline-created customer can be appended and selected.
+  const [customerList, setCustomerList] = useState(customers);
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [quotationDate, setQuotationDate] = useState(today);
   const [validUntil, setValidUntil] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [overallDiscount, setOverallDiscount] = useState(0);
   const [remarks, setRemarks] = useState('');
-  const [terms, setTerms] = useState('');
+  const [terms, setTerms] = useState(DEFAULT_INVOICE_TERMS);
   const [items, setItems] = useState<LineItem[]>([newLine()]);
 
   const totals = useMemo(
@@ -94,6 +99,12 @@ export function QuotationForm({
       ...prev.filter((l) => l.productName || l.unitPrice),
       { key: `q${counter++}`, productId: p.id, productName: p.productName, hsnCode: p.hsnCode ?? '', unit: p.unit, quantity: 1, unitPrice: p.sellingPrice, discount: 0, gstPercentage: p.gstPercentage },
     ]);
+
+  /** Append an inline-created customer and select them. */
+  function onCustomerCreated(c: { id: string; name: string; code: string }) {
+    setCustomerList((prev) => [{ id: c.id, name: c.name, code: c.code }, ...prev]);
+    setCustomerId(c.id);
+  }
 
   function submit() {
     if (!customerId) return toast.error('Select a customer.');
@@ -140,20 +151,31 @@ export function QuotationForm({
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
             <Label>Customer *</Label>
-            <Select
-              items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${c.code})`]))}
-              value={customerId}
-              onValueChange={(v) => setCustomerId(v ?? '')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select customer" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select
+                items={Object.fromEntries(customerList.map((c) => [c.id, `${c.name} (${c.code})`]))}
+                value={customerId}
+                onValueChange={(v) => setCustomerId(v ?? '')}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customerList.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="New customer"
+                onClick={() => setNewCustomerOpen(true)}
+              >
+                <UserPlus className="size-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="q-date">Quotation date *</Label>
@@ -317,6 +339,11 @@ export function QuotationForm({
       </div>
 
       <ProductPicker open={pickerOpen} onOpenChange={setPickerOpen} onSelect={addProduct} />
+      <NewCustomerDialog
+        open={newCustomerOpen}
+        onOpenChange={setNewCustomerOpen}
+        onCreated={onCustomerCreated}
+      />
     </div>
   );
 }
