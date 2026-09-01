@@ -6,6 +6,15 @@ export const APP_NAME = 'NSquare ERP';
 /** Legal entity printed on invoices, quotations and receipts. */
 export const COMPANY_NAME = 'ZETACORP SOLUTIONS PVT. LTD.';
 
+/** Default terms pre-filled on new invoices; editable per document. */
+export const DEFAULT_INVOICE_TERMS = [
+  '1. Payment is due within 15 days from the date of invoice.',
+  '2. Goods once sold will not be taken back or exchanged.',
+  '3. Warranty is as per the manufacturer terms only.',
+  '4. Interest @18% p.a. will be charged on overdue payments.',
+  '5. All disputes are subject to Coimbatore jurisdiction.',
+].join('\n');
+
 /** Auto-generated code prefixes (spec §25, §28, §30, §32, §34, §246, §297). */
 export const CODE_PREFIX = {
   CUSTOMER: 'CUS',

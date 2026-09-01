@@ -12,6 +12,7 @@ import { deleteReasonSchema } from '@/schemas/common';
 import {
   createCustomerSchema,
   customerNoteSchema,
+  quickCustomerSchema,
   updateCustomerSchema,
 } from '@/features/customer/customer.schema';
 import {
@@ -34,6 +35,64 @@ export async function createCustomerAction(input: unknown): Promise<ActionResult
     const customer = await createCustomer(user, data);
     revalidatePath('/customers');
     return actionOk({ id: customer.id }, `Customer ${customer.customerCode} created.`);
+  });
+}
+
+export interface QuickCustomerResult {
+  id: string;
+  name: string;
+  code: string;
+  /** Composed default address, for pre-filling the document's bill-to. */
+  address: string;
+}
+
+/**
+ * Create a customer inline from the invoice/quotation form and return enough
+ * to add them to the picker and select them without a page reload.
+ */
+export async function quickCreateCustomerAction(
+  input: unknown,
+): Promise<ActionResult<QuickCustomerResult>> {
+  return handleAction(async () => {
+    const user = await requirePermission('customer.create');
+    const data = quickCustomerSchema.parse(input);
+
+    const addr = data.billingAddress;
+    const hasAddress = Boolean(addr?.addressLine1?.trim() && addr?.city?.trim());
+
+    const customer = await createCustomer(user, {
+      ...data,
+      overrideDuplicates: true,
+      useSameForShipping: false,
+      billingAddress:
+        hasAddress && addr
+          ? {
+              addressType: 'BILLING',
+              addressLine1: addr.addressLine1 ?? '',
+              addressLine2: addr.addressLine2 || undefined,
+              city: addr.city ?? '',
+              district: addr.district || undefined,
+              state: addr.state ?? '',
+              country: addr.country?.trim() || 'India',
+              postalCode: addr.postalCode ?? '',
+              isDefault: true,
+            }
+          : undefined,
+    });
+
+    revalidatePath('/customers');
+
+    const address = hasAddress && addr
+      ? [addr.addressLine1, addr.addressLine2, addr.city, addr.state, addr.postalCode]
+          .map((p) => p?.trim())
+          .filter(Boolean)
+          .join(', ')
+      : '';
+
+    return actionOk(
+      { id: customer.id, name: customer.customerName, code: customer.customerCode, address },
+      `Customer ${customer.customerCode} created.`,
+    );
   });
 }
 

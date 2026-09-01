@@ -7,7 +7,7 @@
  */
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,8 @@ import { calculateContractInvoice, calculateInvoice } from '@/features/invoice/i
 import { createInvoiceAction } from '@/features/invoice/invoice.actions';
 import { ProductPicker, type PickerProduct } from '@/features/invoice/components/product-picker';
 import { LineCell } from '@/components/shared/line-cell';
+import { NewCustomerDialog } from '@/features/customer/components/new-customer-dialog';
+import { DEFAULT_INVOICE_TERMS } from '@/constants/app';
 
 type BillingType = 'ITEMIZED' | 'SPLIT' | 'MATERIALS_ONLY';
 
@@ -77,6 +79,10 @@ export function InvoiceForm({
 
   const today = new Date().toISOString().slice(0, 10);
   const [customerId, setCustomerId] = useState(initialCustomerId ?? '');
+  // Local copy so an inline-created customer can be appended and selected
+  // without a page reload.
+  const [customerList, setCustomerList] = useState(customers);
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(today);
   const [dueDate, setDueDate] = useState('');
@@ -85,7 +91,7 @@ export function InvoiceForm({
   const [reverseCharge, setReverseCharge] = useState(false);
   const [overallDiscount, setOverallDiscount] = useState(0);
   const [notes, setNotes] = useState('');
-  const [terms, setTerms] = useState('');
+  const [terms, setTerms] = useState(DEFAULT_INVOICE_TERMS);
   const [items, setItems] = useState<LineItem[]>([newLine()]);
 
   // Contract billing (solar EPC). The contract value is GST-inclusive, so the
@@ -172,11 +178,18 @@ export function InvoiceForm({
    */
   function selectCustomer(id: string) {
     setCustomerId(id);
-    const picked = customers.find((c) => c.id === id);
-    const previous = customers.find((c) => c.id === customerId)?.address ?? '';
+    const picked = customerList.find((c) => c.id === id);
+    const previous = customerList.find((c) => c.id === customerId)?.address ?? '';
     if (picked && (!billingAddress.trim() || billingAddress === previous)) {
       setBillingAddress(picked.address ?? '');
     }
+  }
+
+  /** Append an inline-created customer and select them. */
+  function onCustomerCreated(c: { id: string; name: string; code: string; address: string }) {
+    setCustomerList((prev) => [{ id: c.id, name: c.name, code: c.code, address: c.address }, ...prev]);
+    setCustomerId(c.id);
+    if (c.address) setBillingAddress(c.address);
   }
 
   function updateLine(key: string, patch: Partial<LineItem>) {
@@ -273,22 +286,33 @@ export function InvoiceForm({
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-2 sm:col-span-1">
             <Label>Customer *</Label>
-            <Select
-              items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${c.code})`]))}
-              value={customerId}
-              onValueChange={(v) => selectCustomer(v ?? '')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select customer" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name} ({c.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select
+                items={Object.fromEntries(customerList.map((c) => [c.id, `${c.name} (${c.code})`]))}
+                value={customerId}
+                onValueChange={(v) => selectCustomer(v ?? '')}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customerList.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="New customer"
+                onClick={() => setNewCustomerOpen(true)}
+              >
+                <UserPlus className="size-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="inv-number">Invoice number</Label>
@@ -662,6 +686,11 @@ export function InvoiceForm({
       </div>
 
       <ProductPicker open={pickerOpen} onOpenChange={setPickerOpen} onSelect={addProduct} />
+      <NewCustomerDialog
+        open={newCustomerOpen}
+        onOpenChange={setNewCustomerOpen}
+        onCreated={onCustomerCreated}
+      />
     </div>
   );
 }

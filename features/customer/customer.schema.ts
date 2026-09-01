@@ -119,6 +119,17 @@ export const customerFormSchema = customerBase.extend({
   useSameForShipping: z.boolean().default(true),
 });
 
+/**
+ * Minimal customer creation used by the inline "New customer" popup on the
+ * invoice/quotation forms. Only name and phone are required; an optional
+ * billing address can be captured so the document's bill-to fills in.
+ */
+export const quickCustomerSchema = customerBase.extend({
+  billingAddress: formAddressSchema.optional(),
+});
+
+export type QuickCustomerInput = z.input<typeof quickCustomerSchema>;
+
 export type CustomerFormInput = z.input<typeof customerFormSchema>;
 export type CustomerFormValues = z.output<typeof customerFormSchema>;
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
