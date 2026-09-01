@@ -53,18 +53,18 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
     },
     // Quotations remain itemized for now; contract billing lands here next.
     rows: q.items.map((i) => {
-      const gst = i.gstAmount.toNumber();
       const isInter = q.igstAmount.toNumber() > 0;
-      const half = Math.round((gst / 2) * 100) / 100;
       const rate = i.gstPercentage.toNumber();
+      // CGST/SGST each at half the rate → always equal (no odd-paisa split).
+      const half = Math.round(((i.taxableValue.toNumber() * rate) / 200) * 100) / 100;
       return {
         description: i.productName,
         hsn: i.hsnCode ?? '',
         taxable: i.taxableValue.toNumber(),
         gstRateLabel: isInter ? `${rate}% (IGST)` : `${rate}% (${rate / 2}+${rate / 2})`,
         cgst: isInter ? 0 : half,
-        sgst: isInter ? 0 : Math.round((gst - half) * 100) / 100,
-        igst: isInter ? gst : 0,
+        sgst: isInter ? 0 : half,
+        igst: isInter ? i.gstAmount.toNumber() : 0,
         total: i.lineTotal.toNumber(),
       };
     }),

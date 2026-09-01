@@ -192,8 +192,12 @@ export async function createInvoice(user: AuthUser, input: CreateInvoiceInput) {
   const dueDate = input.dueDate ? new Date(input.dueDate) : null;
 
   const invoice = await prisma.$transaction(async (tx) => {
+    // A manually entered invoice number wins (e.g. a specific series like
+    // "ZCS/2026-27/001"); otherwise the year sequence generates one. The DB
+    // unique constraint guards against duplicates and surfaces as a conflict.
+    const manualNumber = input.invoiceNumber?.trim();
     const { key, prefix } = invoiceNumberKey(invoiceDate);
-    const number = await generateCode(tx, { key, prefix });
+    const number = manualNumber || (await generateCode(tx, { key, prefix }));
 
     const created = await tx.invoice.create({
       data: {

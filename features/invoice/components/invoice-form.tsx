@@ -77,6 +77,7 @@ export function InvoiceForm({
 
   const today = new Date().toISOString().slice(0, 10);
   const [customerId, setCustomerId] = useState(initialCustomerId ?? '');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(today);
   const [dueDate, setDueDate] = useState('');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
@@ -218,6 +219,7 @@ export function InvoiceForm({
     startTransition(async () => {
       const result = await createInvoiceAction({
         customerId,
+        invoiceNumber: invoiceNumber || undefined,
         invoiceDate,
         dueDate: dueDate || undefined,
         placeOfSupply: placeOfSupply || undefined,
@@ -287,6 +289,15 @@ export function InvoiceForm({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="inv-number">Invoice number</Label>
+            <Input
+              id="inv-number"
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              placeholder="Auto-generated if left blank"
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="inv-date">Invoice date *</Label>

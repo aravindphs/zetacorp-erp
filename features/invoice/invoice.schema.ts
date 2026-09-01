@@ -24,6 +24,8 @@ export const createInvoiceSchema = z
   .object({
     customerId: uuidSchema,
     quotationId: z.string().uuid().optional(),
+    /** Optional manual invoice number; auto-generated when left blank. */
+    invoiceNumber: optionalString(50),
     invoiceDate: dateString,
     dueDate: z.string().optional().or(z.literal('').transform(() => undefined)),
     placeOfSupply: optionalString(100),

@@ -51,9 +51,32 @@ export function calculateInvoice(params: {
   // Distribute the overall discount proportionally across lines.
   const factor = baseTotal > 0 ? Math.max(0, (baseTotal - overallDiscount) / baseTotal) : 1;
 
+  // Intra-state (company state == place of supply, or unknown) → CGST + SGST.
+  // Inter-state → IGST.
+  const company = params.companyState?.trim().toLowerCase();
+  const supply = params.placeOfSupply?.trim().toLowerCase();
+  const isInterState = Boolean(company && supply && company !== supply);
+
+  // CGST and SGST are each levied at HALF the rate and computed per line, so
+  // for a given line they are always equal — the sums are therefore equal too.
+  // (Halving a single combined GST total instead would leave an odd paisa on
+  // one side, e.g. 4,820.94 vs 4,820.93.)
+  let cgstAcc = 0;
+  let sgstAcc = 0;
+  let igstAcc = 0;
+
   const lines: CalcLineResult[] = params.lines.map((l, i) => {
     const taxableValue = r2((bases[i] ?? 0) * factor);
-    const gstAmount = r2((taxableValue * l.gstPercentage) / 100);
+    let gstAmount: number;
+    if (isInterState) {
+      gstAmount = r2((taxableValue * l.gstPercentage) / 100);
+      igstAcc += gstAmount;
+    } else {
+      const half = r2((taxableValue * l.gstPercentage) / 200);
+      gstAmount = r2(half * 2);
+      cgstAcc += half;
+      sgstAcc += half;
+    }
     return {
       ...l,
       taxableValue,
@@ -63,17 +86,10 @@ export function calculateInvoice(params: {
   });
 
   const taxableAmount = r2(lines.reduce((s, l) => s + l.taxableValue, 0));
-  const gstAmount = r2(lines.reduce((s, l) => s + l.gstAmount, 0));
-
-  // Intra-state (company state == place of supply, or unknown) → CGST + SGST.
-  // Inter-state → IGST.
-  const company = params.companyState?.trim().toLowerCase();
-  const supply = params.placeOfSupply?.trim().toLowerCase();
-  const isInterState = Boolean(company && supply && company !== supply);
-
-  const cgstAmount = isInterState ? 0 : r2(gstAmount / 2);
-  const sgstAmount = isInterState ? 0 : r2(gstAmount - cgstAmount);
-  const igstAmount = isInterState ? gstAmount : 0;
+  const cgstAmount = r2(cgstAcc);
+  const sgstAmount = r2(sgstAcc);
+  const igstAmount = r2(igstAcc);
+  const gstAmount = r2(cgstAmount + sgstAmount + igstAmount);
 
   const preRound = taxableAmount + gstAmount;
   const grandTotal = Math.round(preRound);
@@ -156,17 +172,17 @@ function bankersRound(value: number): number {
 
 /**
  * GST for one component, computed in integer paise so no rounding drift can
- * accumulate. CGST takes the (banker's-rounded) half and SGST takes the
- * remainder, so the two always re-sum to the total exactly — this is why the
- * reference shows 15,867.77 split as 7,933.88 + 7,933.89.
+ * accumulate. For intra-state, CGST and SGST are each levied at HALF the rate
+ * and computed independently, so they are always EQUAL (e.g. 5% → 2.5% + 2.5%,
+ * never a lopsided 4,820.94 / 4,820.93). The combined GST is their sum.
  */
 function componentTax(taxablePaise: number, ratePercent: number, isInterState: boolean) {
-  const gstPaise = bankersRound((taxablePaise * ratePercent) / 100);
   if (isInterState) {
-    return { gstPaise, cgstPaise: 0, sgstPaise: 0, igstPaise: gstPaise };
+    const igstPaise = bankersRound((taxablePaise * ratePercent) / 100);
+    return { gstPaise: igstPaise, cgstPaise: 0, sgstPaise: 0, igstPaise };
   }
-  const cgstPaise = bankersRound(gstPaise / 2);
-  return { gstPaise, cgstPaise, sgstPaise: gstPaise - cgstPaise, igstPaise: 0 };
+  const halfPaise = bankersRound((taxablePaise * ratePercent) / 200);
+  return { gstPaise: halfPaise * 2, cgstPaise: halfPaise, sgstPaise: halfPaise, igstPaise: 0 };
 }
 
 export function calculateContractInvoice(params: {

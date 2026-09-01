@@ -77,6 +77,27 @@ interface ItemSource {
 }
 
 /**
+ * Render one product line as a PDF row. Intra-state CGST/SGST are each taken at
+ * HALF the rate so they are always equal (matching the calc engine), rather
+ * than halving the combined GST and leaving an odd paisa on one side.
+ */
+function itemToRow(item: ItemSource, isInterState: boolean): InvoicePdfRow {
+  const taxable = item.taxableValue.toNumber();
+  const rate = item.gstPercentage.toNumber();
+  const half = Math.round(((taxable * rate) / 200) * 100) / 100;
+  return {
+    description: item.productName,
+    hsn: item.hsnCode ?? '',
+    taxable,
+    gstRateLabel: rateLabel(rate, isInterState),
+    cgst: isInterState ? 0 : half,
+    sgst: isInterState ? 0 : half,
+    igst: isInterState ? item.gstAmount.toNumber() : 0,
+    total: item.lineTotal.toNumber(),
+  };
+}
+
+/**
  * Rebuild the printed rows. Contract invoices are recomputed from the stored
  * ratio and rates so the PDF always reconciles with the saved totals.
  */
@@ -86,20 +107,7 @@ export function buildPdfRows(
   isInterState: boolean,
 ): InvoicePdfRow[] {
   if (invoice.billingType === 'ITEMIZED') {
-    return items.map((item) => {
-      const gst = item.gstAmount.toNumber();
-      const half = Math.round((gst / 2) * 100) / 100;
-      return {
-        description: item.productName,
-        hsn: item.hsnCode ?? '',
-        taxable: item.taxableValue.toNumber(),
-        gstRateLabel: rateLabel(item.gstPercentage.toNumber(), isInterState),
-        cgst: isInterState ? 0 : half,
-        sgst: isInterState ? 0 : Math.round((gst - half) * 100) / 100,
-        igst: isInterState ? gst : 0,
-        total: item.lineTotal.toNumber(),
-      };
-    });
+    return items.map((item) => itemToRow(item, isInterState));
   }
 
   const goodsRatio = invoice.goodsRatio.toNumber();
@@ -144,20 +152,7 @@ export function buildPdfRows(
   ];
 
   // Additional products billed alongside the contract (billed on top).
-  const extraRows: InvoicePdfRow[] = items.map((item) => {
-    const gst = item.gstAmount.toNumber();
-    const half = Math.round((gst / 2) * 100) / 100;
-    return {
-      description: item.productName,
-      hsn: item.hsnCode ?? '',
-      taxable: item.taxableValue.toNumber(),
-      gstRateLabel: rateLabel(item.gstPercentage.toNumber(), isInterState),
-      cgst: isInterState ? 0 : half,
-      sgst: isInterState ? 0 : Math.round((gst - half) * 100) / 100,
-      igst: isInterState ? gst : 0,
-      total: item.lineTotal.toNumber(),
-    };
-  });
+  const extraRows: InvoicePdfRow[] = items.map((item) => itemToRow(item, isInterState));
 
   if (isSplit && servicePart && serviceTaxable > 0) {
     rows.push({
