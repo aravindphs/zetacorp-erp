@@ -76,11 +76,16 @@ export const GET = withApiHandler(async (_request, requestId, ctx: Ctx) => {
   const pdf = await generateInvoicePdf(data);
   await logActivity({ userId: user.id, activity: `Downloaded PDF for ${invoice.invoiceNumber}`, module: 'invoice', referenceId: invoice.id });
 
+  // Invoice numbers may be manual (e.g. "ZCS/2026-27/001"); characters illegal
+  // in filenames — notably slashes — are replaced so the download is named
+  // after the full invoice number instead of being truncated at the slash.
+  const safeName = invoice.invoiceNumber.replace(/[\\/:*?"<>|]+/g, '-');
+
   return new NextResponse(Buffer.from(pdf), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${invoice.invoiceNumber}.pdf"`,
+      'Content-Disposition': `inline; filename="${safeName}.pdf"`,
       'x-request-id': requestId,
     },
   });

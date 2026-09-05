@@ -466,11 +466,12 @@ export function InvoiceForm({
 
               {billingType === 'SPLIT' && (
                 <div className="space-y-2">
-                  <Label htmlFor="ssac">Service SAC</Label>
+                  <Label htmlFor="ssac">Service HSN / SAC</Label>
                   <Input
                     id="ssac"
                     value={serviceSac}
                     onChange={(e) => setServiceSac(e.target.value)}
+                    placeholder="e.g. 9954"
                   />
                 </div>
               )}
